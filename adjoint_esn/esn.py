@@ -1,102 +1,278 @@
 import numpy as np
-from sklearn.linear_model import Ridge
-from scipy.sparse import csr_matrix, csc_matrix, lil_matrix
+from scipy.sparse import csc_matrix, csr_matrix, lil_matrix
 from scipy.sparse.linalg import eigs as sparse_eigs
+from sklearn.linear_model import Ridge
+
 
 class ESN:
-    def __init__(self, reservoir_size, dimension, connectivity, 
-                    input_scaling = 1.0, spectral_radius = 1.0,
-                    leak_factor = 1.0, tikhonov = 1e-12, bias_in = 1.0):
-        """ Creates an Echo State Network with the given parameters
-            Args:
-                reservoir_size: number of neurons in the reservoir
-                dimension: dimension of the state space of the input and output #@todo: separate input and output dimensions
-                connectivity: connectivity of the reservoir weights, how many connections does each neuron have (on average)
-                input_scaling: scaling applied to the input weights matrix
-                spectral_radius: spectral radius (maximum absolute eigenvalue) of the reservoir weights matrix
-                leak_factor: factor for the leaky integrator if set to 1 (default), then no leak is applied
-                tikhonov: regularisation coefficient for the ridge regression
-            Returns:
-                ESN object
+    def __init__(
+        self,
+        reservoir_size,
+        dimension,
+        reservoir_connectivity,
+        input_scaling=1.0,
+        spectral_radius=1.0,
+        leak_factor=1.0,
+        input_bias=1.0,
+        input_seeds=[0, 1],
+        reservoir_seeds=[2, 3],
+    ):
+        """Creates an Echo State Network with the given parameters
+        Args:
+            reservoir_size: number of neurons in the reservoir
+            dimension: dimension of the state space of the input and output #@todo: separate input and output dimensions
+            reservoir_connectivity: connectivity of the reservoir weights, how many connections does each neuron have (on average)
+            input_scaling: scaling applied to the input weights matrix
+            spectral_radius: spectral radius (maximum absolute eigenvalue) of the reservoir weights matrix
+            leak_factor: factor for the leaky integrator if set to 1 (default), then no leak is applied
+            tikhonov: regularisation coefficient for the ridge regression
+        Returns:
+            ESN object
 
         """
-        # global parameters
+        ## Hyperparameters
+        # these should be fixed during initialization and not changed since they affect
+        # the matrix dimensions, and the matrices can become incompatible
         self.N_reservoir = reservoir_size
         self.N_dim = dimension
-        self.connectivity = connectivity
 
-        self.sparseness = 1-(self.connectivity/(self.N_reservoir-1))
+        self.reservoir_connectivity = reservoir_connectivity
+
+        self.leak_factor = leak_factor
+
+        ## Weights
+        # the object should also store the seeds for reproduction
+        # initialise input weights
+        self.W_in_seeds = input_seeds
+        self.W_in_shape = (
+            self.N_reservoir,
+            self.N_dim + 1,
+        )  # N_dim+1 because we augment the inputs with a bias
+        self.input_weights = self.generate_input_weights()
+        self.input_scaling = input_scaling  # input weights are automatically scaled if input scaling is updated
+
+        # initialise reservoir weights
+        self.W_seeds = reservoir_seeds
+        self.W_shape = (self.N_reservoir, self.N_reservoir)
+        self.reservoir_weights = self.generate_reservoir_weights()
+        self.spectral_radius = spectral_radius  # reservoir weights are automatically scaled if spectral radius is updated
+
+        # initialise output weights
+        self.W_out_shape = (
+            self.N_reservoir + 1,
+            self.N_dim,
+        )  # N_reservoir+1 because we augment the outputs with a bias
+        self.output_weights = np.zeros(self.W_out_shape)
+
+        ## Biases
+        self.input_bias = input_bias
+        self.output_bias = np.array([1.0])
+
+    @property
+    def reservoir_connectivity(self):
+        return self.connectivity
+
+    @reservoir_connectivity.setter
+    def reservoir_connectivity(self, new_reservoir_connectivity):
+        # set connectivity
+        self.connectivity = new_reservoir_connectivity
+        # regenerate reservoir with the new connectivity
+        if hasattr(self, "W"):
+            print("Reservoir weights are regenerated for the new connectivity.")
+            self.reservoir_weights = self.generate_reservoir_weights()
+        return
+
+    @property
+    def leak_factor(self):
+        return self.alpha
+
+    @leak_factor.setter
+    def leak_factor(self, new_leak_factor):
+        # set leak factor
+        if new_leak_factor < 0 or new_leak_factor > 1:
+            raise ValueError("Leak factor must be between 0 and 1 (including).")
+        self.alpha = new_leak_factor
+        return
+
+    @property
+    def tikhonov(self):
+        return self.tikh
+
+    @tikhonov.setter
+    def tikhonov(self, new_tikhonov):
+        # set tikhonov coefficient
+        if new_tikhonov <= 0:
+            raise ValueError("Tikhonov coefficient must be greater than 0.")
+        self.tikh = new_tikhonov
+        return
+
+    @property
+    def input_scaling(self):
+        return self.sigma_in
+
+    @input_scaling.setter
+    def input_scaling(self, new_input_scaling):
+        """Setter for the input scaling, if new input scaling is given,
+        then the input weight matrix is also updated
+        """
+        if hasattr(self, "sigma_in"):
+            # rescale the input matrix
+            self.W_in = (1 / self.sigma_in) * self.W_in
+        # set input scaling
+        self.sigma_in = new_input_scaling
+        print("Input weights are rescaled with the new input scaling.")
+        self.W_in = self.sigma_in * self.W_in
+        return
+
+    @property
+    def spectral_radius(self):
+        return self.rho
+
+    @spectral_radius.setter
+    def spectral_radius(self, new_spectral_radius):
+        """Setter for the spectral_radius, if new spectral_radius is given,
+        then the reservoir weight matrix is also updated
+        """
+        if hasattr(self, "rho"):
+            # rescale the reservoir matrix
+            self.W = (1 / self.rho) * self.W
+        # set spectral radius
+        self.rho = new_spectral_radius
+        print("Reservoir weights are rescaled with the new spectral radius.")
+        self.W = self.rho * self.W
+        return
+
+    @property
+    def input_weights(self):
+        return self.W_in
+
+    @input_weights.setter
+    def input_weights(self, new_input_weights):
+        # first check the dimensions
+        if new_input_weights.shape != self.W_in_shape:
+            raise ValueError(
+                f"The shape of the provided input weights does not match with the network, {new_input_weights.shape} != {self.W_in_shape}"
+            )
+
+        # set the new input weights
+        self.W_in = new_input_weights
+
+        # set the input scaling to 1.0
+        print("Input scaling is set to 1, set it separately if necessary.")
+        self.sigma_in = 1.0
+        return
+
+    @property
+    def reservoir_weights(self):
+        return self.W
+
+    @reservoir_weights.setter
+    def reservoir_weights(self, new_reservoir_weights):
+        # first check the dimensions
+        if new_reservoir_weights.shape != self.W_shape:
+            raise ValueError(
+                f"The shape of the provided reservoir weights does not match with the network, {new_reservoir_weights.shape} != {self.W_shape}"
+            )
+
+        # set the new reservoir weights
+        self.W = new_reservoir_weights
+
+        # set the spectral radius to 1.0
+        print("Spectral radius is set to 1, set it separately if necessary.")
+        self.rho = 1.0
+        return
+
+    @property
+    def output_weights(self):
+        return self.W_out
+
+    @output_weights.setter
+    def output_weights(self, new_output_weights):
+        # first check the dimensions
+        if new_output_weights.shape != self.W_out_shape:
+            raise ValueError(
+                f"The shape of the provided reservoir weights does not match with the network, {new_output_weights.shape} != {self.W_out_shape}"
+            )
+        # set the new reservoir weights
+        self.W_out = new_output_weights
+        return
+
+    @property
+    def input_bias(self):
+        return self.b_in
+
+    @input_bias.setter
+    def input_bias(self, new_input_bias):
+        self.b_in = new_input_bias
+        return
+
+    @property
+    def output_bias(self):
+        return self.b_out
+
+    @output_bias.setter
+    def output_bias(self, new_output_bias):
+        self.b_out = new_output_bias
+        return
+
+    @property
+    def sparseness(self):
+        """Define sparseness from connectivity"""
         # probability of non-connections = 1 - probability of connection
         # probability of connection = (number of connections)/(total number of neurons - 1)
         # -1 to exclude the neuron itself
-    
-        self.alpha = leak_factor
-        self.tikh = tikhonov
+        return 1 - (self.connectivity / (self.N_reservoir - 1))
 
-        self.sigma_in = input_scaling
-        self.rho = spectral_radius
-
-        # weights
-        self.W_in = self.generate_input_weights()
-        self.W = self.generate_reservoir_weights()
-        self.W_out = np.zeros((self.N_reservoir, self.N_dim))
-
-        # biases
-        self.bias_in = bias_in
-        self.bias_out = np.array([1.0])
-
-    def generate_input_weights(self, seeds = [0,1]):
-        """ Create the input weights matrix
+    def generate_input_weights(self):
+        """Create the input weights matrix
         Args:
-            seeds: a list of seeds for the random generators; 
+            seeds: a list of seeds for the random generators;
                 one for the column index, one for the uniform sampling
         Returns:
             W_in: sparse matrix containing the input weights
         """
         # initialize W_in with zeros
-        W_in = lil_matrix((self.N_reservoir, self.N_dim+1)) # N_dim+1 because we augment the inputs with a bias
-
+        W_in = lil_matrix(self.W_in_shape)
         # set the seeds
-        rnd0 = np.random.RandomState(seeds[0])
-        rnd1 = np.random.RandomState(seeds[1])
+        rnd0 = np.random.RandomState(self.W_in_seeds[0])
+        rnd1 = np.random.RandomState(self.W_in_seeds[1])
 
         # make W_in
         for j in range(self.N_reservoir):
-            rnd_idx = rnd0.randint(0,self.N_dim+1)
+            rnd_idx = rnd0.randint(0, self.N_dim + 1)
             # only one element different from zero
-            W_in[j,rnd_idx] = rnd1.uniform(-1,1) # sample from the uniform distribution
+            W_in[j, rnd_idx] = rnd1.uniform(
+                -1, 1
+            )  # sample from the uniform distribution
         W_in = W_in.tocsr()
-
-        # scale W_in
-        W_in = self.sigma_in*W_in
 
         return W_in
 
-    def generate_reservoir_weights(self, seeds = [2,3]):
-        """ Create the reservoir weights matrix according to Erdos-Renyi network
+    def generate_reservoir_weights(self):
+        """Create the reservoir weights matrix according to Erdos-Renyi network
         Args:
-            seeds: a list of seeds for the random generators; 
+            seeds: a list of seeds for the random generators;
                 one for the connections, one for the uniform sampling of weights
         Returns:
             W: sparse matrix containing reservoir weights
         """
         # set the seeds
-        rnd0 = np.random.RandomState(seeds[0]) # connection rng
-        rnd1 = np.random.RandomState(seeds[1])  # sampling rng
+        rnd0 = np.random.RandomState(self.W_seeds[0])  # connection rng
+        rnd1 = np.random.RandomState(self.W_seeds[1])  # sampling rng
 
         # initialize with zeros
-        W = np.zeros((self.N_reservoir, self.N_reservoir))
+        W = np.zeros(self.W_shape)
 
         # generate a matrix sampled from the uniform distribution (0,1)
-        W_connection = rnd0.rand(self.N_reservoir, self.N_reservoir) 
+        W_connection = rnd0.rand(self.W_shape[0], self.W_shape[1])
 
         # generate the weights from the uniform distribution (-1,1)
-        W_weights = rnd1.uniform(-1,1,(self.N_reservoir, self.N_reservoir)) 
+        W_weights = rnd1.uniform(-1, 1, self.W_shape)
 
         # replace the connections with the weights
-        W = np.where(W_connection<(1-self.sparseness), W_weights, W)
-        # 1-sparseness is the connection probability = p, 
-        # after sampling from the uniform distribution between (0,1), 
+        W = np.where(W_connection < (1 - self.sparseness), W_weights, W)
+        # 1-sparseness is the connection probability = p,
+        # after sampling from the uniform distribution between (0,1),
         # the probability of being in the region (0,p) is the same as having probability p
         # (this is equivalent to drawing from a Bernoulli distribution with probability p)
 
@@ -104,18 +280,15 @@ class ESN:
 
         # find the spectral radius of the generated matrix
         # this is the maximum absolute eigenvalue
-        rho_pre = np.abs(sparse_eigs(W, k=1, which='LM', return_eigenvectors=False))[0]
+        rho_pre = np.abs(sparse_eigs(W, k=1, which="LM", return_eigenvectors=False))[0]
 
         # first scale W by the spectral radius to get unitary spectral radius
-        W = (1/rho_pre)*W 
-
-        # scale again with the user specified spectral radius
-        W = self.rho*W
+        W = (1 / rho_pre) * W
 
         return W
 
-    def step(self, x_prev, u, scale = (0,1)):
-        """ Advances ESN time step.
+    def step(self, x_prev, u, scale=(0, 1)):
+        """Advances ESN time step.
         Args:
             x_prev: reservoir state in the previous time step (n-1)
             u: input in this time step (n)
@@ -124,116 +297,148 @@ class ESN:
             x_next: reservoir state in this time step (n)
         """
         # normalise the input
-        u_norm = (u-scale[0])/scale[1] # we normalize here, so that the input is normalised in closed-loop run too?
+        u_norm = (u - scale[0]) / scale[
+            1
+        ]  # we normalize here, so that the input is normalised in closed-loop run too?
 
         # augment the input with the input bias
-        u_augmented = np.hstack((u_norm, self.bias_in))
+        u_augmented = np.hstack((u_norm, self.b_in))
 
         # update the reservoir
-        x_tilde = np.tanh(self.W_in.dot(u_augmented)+ self.W.dot(x_prev))
+        x_tilde = np.tanh(self.W_in.dot(u_augmented) + self.W.dot(x_prev))
 
         # apply the leaky integrator
-        x = (1-self.alpha)*x_prev+self.alpha*x_tilde
+        x = (1 - self.alpha) * x_prev + self.alpha * x_tilde
         return x
 
-    def open_loop(self, x0, U, scale = (0,1)):
-        """ Advances ESN in open-loop.
-            Args:
-                x0: initial reservoir state
-                U: input time series in matrix form (N_t x N_dim)
-                scale: tuple that contains the scaling parameters for input
-            Returns:
-                X: time series of the reservoir states (N_t x N_reservoir)
+    def open_loop(self, x0, U, scale=(0, 1)):
+        """Advances ESN in open-loop.
+        Args:
+            x0: initial reservoir state
+            U: input time series in matrix form (N_t x N_dim)
+            scale: tuple that contains the scaling parameters for input
+        Returns:
+            X: time series of the reservoir states (N_t x N_reservoir)
         """
-        N_t = U.shape[0] # number of time steps
+        N_t = U.shape[0]  # number of time steps
 
         # create an empty matrix to hold the reservoir states in time
-        X = np.empty((N_t+1, self.N_reservoir)) # N_t+1 because at t = 0, we don't have input
-        
+        X = np.empty(
+            (N_t + 1, self.N_reservoir)
+        )  # N_t+1 because at t = 0, we don't have input
+
         # initialise with the given initial reservoir states
-        X[0,:] = x0
-
-        # step in time 
-        for n in np.arange(1, N_t+1):
-            X[n] = self.step(X[n-1,:], U[n-1,:], scale) # update the reservoir
-        
-        return X
-
-    def closed_loop(self, x0, N_t, scale = (0,1)):
-        """ Advances ESN in closed-loop.
-            Args:
-                N_t: number of time steps
-                x0: initial reservoir state
-                scale: tuple that contains the scaling parameters for input
-            Returns:
-                X: time series of the reservoir states (N_t x N_reservoir)
-                Y: time series of the output (N_t x N_dim)
-        """
-        # create an empty matrix to hold the reservoir states in time
-        X = np.empty((N_t+1, self.N_reservoir)) 
-
-        # create an empty matrix to hold the output states in time
-        Y = np.empty((N_t+1, self.N_dim)) 
-
-        # initialize with the given initial reservoir states
-        X[0,:] = x0
-
-        # augment the reservoir states with the bias
-        x0_augmented = np.hstack((x0, self.bias_out))
-        # initialise with the calculated output states
-        Y[0,:] = np.dot(x0_augmented, self.W_out) 
+        X[0, :] = x0
 
         # step in time
-        for n in range(1, N_t+1):
-            X[n,:] = self.step(X[n-1,:], Y[n-1,:], scale) # update the reservoir with the feedback from the output
-            x_augmented = np.hstack((X[n,:], self.bias_out)) # augment the reservoir states with bias
-            Y[n,:] = np.dot(x_augmented, self.W_out) # update the output with the reservoir states
-        
-        return X, Y
-        
-    def train(self, U_washout, U_train, Y_train, scale = (0,1)):
-        """ Trains ESN and sets the output weights.
-            Args:
-                U_washout: washout input time series
-                U_train: training input time series
-                Y_train: training output time series
-                scale: tuple that contains the scaling parameters for input
+        for n in np.arange(1, N_t + 1):
+            X[n] = self.step(X[n - 1, :], U[n - 1, :], scale)  # update the reservoir
+
+        return X
+
+    def closed_loop(self, x0, N_t, scale=(0, 1)):
+        """Advances ESN in closed-loop.
+        Args:
+            N_t: number of time steps
+            x0: initial reservoir state
+            scale: tuple that contains the scaling parameters for input
+        Returns:
+            X: time series of the reservoir states (N_t x N_reservoir)
+            Y: time series of the output (N_t x N_dim)
         """
+        # create an empty matrix to hold the reservoir states in time
+        X = np.empty((N_t + 1, self.N_reservoir))
+
+        # create an empty matrix to hold the output states in time
+        Y = np.empty((N_t + 1, self.N_dim))
+
+        # initialize with the given initial reservoir states
+        X[0, :] = x0
+
+        # augment the reservoir states with the bias
+        x0_augmented = np.hstack((x0, self.b_out))
+        # initialise with the calculated output states
+        Y[0, :] = np.dot(x0_augmented, self.W_out)
+
+        # step in time
+        for n in range(1, N_t + 1):
+            X[n, :] = self.step(
+                X[n - 1, :], Y[n - 1, :], scale
+            )  # update the reservoir with the feedback from the output
+            x_augmented = np.hstack(
+                (X[n, :], self.b_out)
+            )  # augment the reservoir states with bias
+            Y[n, :] = np.dot(
+                x_augmented, self.W_out
+            )  # update the output with the reservoir states
+
+        return X, Y
+
+    def run_washout(self, U_washout, scale):
         # Wash-out phase to get rid of the effects of reservoir states initialised as zero
-        x0_washout = np.zeros(self.N_reservoir) # initialise the reservoir states before washout
+        x0_washout = np.zeros(
+            self.N_reservoir
+        )  # initialise the reservoir states before washout
 
         # let the ESN run in open-loop for the wash-out
-        # get the initial reservoir for the training, which is the last reservoir state
-        x0_train = self.open_loop(x0=x0_washout, U=U_washout, scale = scale)[-1,:] 
+        # get the initial reservoir to start the actual open/closed-loop,
+        # which is the last reservoir state
+        x0 = self.open_loop(x0=x0_washout, U=U_washout, scale=scale)[-1, :]
+        return x0
 
-        # run in open loop with the training data
-        X_train = self.open_loop(x0=x0_train, U=U_train, scale = scale) 
-        # X_train is one step longer than U_train and Y_train, we discard the initial state
-        X_train = X_train[1:,:]
+    def open_loop_with_washout(self, U_washout, U, scale):
+        x0 = self.run_washout(U_washout, scale)
+        X = self.open_loop(x0=x0, U=U, scale=scale)
+        return X
 
-        # augment with the bias
-        N_t = X_train.shape[0] # number of time steps
-        X_train_augmented = np.hstack((X_train, self.bias_out*np.ones((N_t,1))))
-        
-        # solve for W_out using ridge regression
+    def closed_loop_with_washout(self, U_washout, N_t, scale):
+        x0 = self.run_washout(U_washout, scale)
+        X, Y = self.closed_loop(x0=x0, N_t=N_t, scale=scale)
+        return X, Y
+
+    def solve_ridge(self, X, Y, tikh):
+        """Solves the ridge regression problem
+        Args:
+            X: input data
+            Y: output data
+            tikh: tikhonov coefficient that regularises L2 norm
+        """
         # @todo:
         # can set the method for ridge regression, compare the methods
         # scikit recommends minibatch sgd method for large scale data
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
-        reg = Ridge(alpha=self.tikh, fit_intercept=False)
-        reg.fit(X_train_augmented, Y_train)
-        self.W_out = reg.coef_.T
+        reg = Ridge(alpha=tikh, fit_intercept=False)
+        reg.fit(X, Y)
+        W_out = (
+            reg.coef_.T
+        )  # we take the transpose because of how the closed loop is structured
+        return W_out
 
+    def reservoir_for_train(self, U_washout, U_train, scale):
+        X_train = self.open_loop_with_washout(U_washout, U_train, scale)
+
+        # X_train is one step longer than U_train and Y_train, we discard the initial state
+        X_train = X_train[1:, :]
+
+        # augment with the bias
+        N_t = X_train.shape[0]  # number of time steps
+        X_train_augmented = np.hstack((X_train, self.b_out * np.ones((N_t, 1))))
+        return X_train_augmented
+
+    def train(self, U_washout, U_train, Y_train, tikhonov=1e-12, scale=(0, 1)):
+        """Trains ESN and sets the output weights.
+        Args:
+            U_washout: washout input time series
+            U_train: training input time series
+            Y_train: training output time series
+            scale: tuple that contains the scaling parameters for input
+        """
+        # get the training input
+        # this is the reservoir states augmented with the bias after a washout phase
+        X_train_augmented = self.reservoir_for_train(U_washout, U_train, scale)
+
+        # solve for W_out using ridge regression
+        self.tikhonov = tikhonov  # set the tikhonov during training
+        self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
         return
-        
-
-
-
-
-
-
-
-
-
-
