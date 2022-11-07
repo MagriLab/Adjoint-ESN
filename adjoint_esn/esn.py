@@ -16,20 +16,25 @@ class ESN:
         input_bias=1.0,
         input_seeds=[0, 1],
         reservoir_seeds=[2, 3],
+        verbose=True,
     ):
         """Creates an Echo State Network with the given parameters
         Args:
             reservoir_size: number of neurons in the reservoir
-            dimension: dimension of the state space of the input and output #@todo: separate input and output dimensions
-            reservoir_connectivity: connectivity of the reservoir weights, how many connections does each neuron have (on average)
+            dimension: dimension of the state space of the input and output
+                #@todo: separate input and output dimensions
+            reservoir_connectivity: connectivity of the reservoir weights,
+                how many connections does each neuron have (on average)
             input_scaling: scaling applied to the input weights matrix
-            spectral_radius: spectral radius (maximum absolute eigenvalue) of the reservoir weights matrix
-            leak_factor: factor for the leaky integrator if set to 1 (default), then no leak is applied
-            tikhonov: regularisation coefficient for the ridge regression
+            spectral_radius: spectral radius (maximum absolute eigenvalue)
+                of the reservoir weights matrix
+            leak_factor: factor for the leaky integrator
+                if set to 1 (default), then no leak is applied
         Returns:
             ESN object
 
         """
+        self.verbose = verbose
         ## Hyperparameters
         # these should be fixed during initialization and not changed since they affect
         # the matrix dimensions, and the matrices can become incompatible
@@ -44,24 +49,22 @@ class ESN:
         # the object should also store the seeds for reproduction
         # initialise input weights
         self.W_in_seeds = input_seeds
-        self.W_in_shape = (
-            self.N_reservoir,
-            self.N_dim + 1,
-        )  # N_dim+1 because we augment the inputs with a bias
+        self.W_in_shape = (self.N_reservoir, self.N_dim + 1)
+        # N_dim+1 because we augment the inputs with a bias
         self.input_weights = self.generate_input_weights()
-        self.input_scaling = input_scaling  # input weights are automatically scaled if input scaling is updated
+        self.input_scaling = input_scaling
+        # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
         self.W_seeds = reservoir_seeds
         self.W_shape = (self.N_reservoir, self.N_reservoir)
         self.reservoir_weights = self.generate_reservoir_weights()
-        self.spectral_radius = spectral_radius  # reservoir weights are automatically scaled if spectral radius is updated
+        self.spectral_radius = spectral_radius
+        # reservoir weights are automatically scaled if spectral radius is updated
 
         # initialise output weights
-        self.W_out_shape = (
-            self.N_reservoir + 1,
-            self.N_dim,
-        )  # N_reservoir+1 because we augment the outputs with a bias
+        self.W_out_shape = (self.N_reservoir + 1, self.N_dim)
+        # N_reservoir+1 because we augment the outputs with a bias
         self.output_weights = np.zeros(self.W_out_shape)
 
         ## Biases
@@ -78,7 +81,8 @@ class ESN:
         self.connectivity = new_reservoir_connectivity
         # regenerate reservoir with the new connectivity
         if hasattr(self, "W"):
-            print("Reservoir weights are regenerated for the new connectivity.")
+            if self.verbose:
+                print("Reservoir weights are regenerated for the new connectivity.")
             self.reservoir_weights = self.generate_reservoir_weights()
         return
 
@@ -120,7 +124,8 @@ class ESN:
             self.W_in = (1 / self.sigma_in) * self.W_in
         # set input scaling
         self.sigma_in = new_input_scaling
-        print("Input weights are rescaled with the new input scaling.")
+        if self.verbose:
+            print("Input weights are rescaled with the new input scaling.")
         self.W_in = self.sigma_in * self.W_in
         return
 
@@ -138,7 +143,8 @@ class ESN:
             self.W = (1 / self.rho) * self.W
         # set spectral radius
         self.rho = new_spectral_radius
-        print("Reservoir weights are rescaled with the new spectral radius.")
+        if self.verbose:
+            print("Reservoir weights are rescaled with the new spectral radius.")
         self.W = self.rho * self.W
         return
 
@@ -158,7 +164,8 @@ class ESN:
         self.W_in = new_input_weights
 
         # set the input scaling to 1.0
-        print("Input scaling is set to 1, set it separately if necessary.")
+        if self.verbose:
+            print("Input scaling is set to 1, set it separately if necessary.")
         self.sigma_in = 1.0
         return
 
@@ -171,14 +178,16 @@ class ESN:
         # first check the dimensions
         if new_reservoir_weights.shape != self.W_shape:
             raise ValueError(
-                f"The shape of the provided reservoir weights does not match with the network, {new_reservoir_weights.shape} != {self.W_shape}"
+                f"The shape of the provided reservoir weights does not match with the network,"
+                f"{new_reservoir_weights.shape} != {self.W_shape}"
             )
 
         # set the new reservoir weights
         self.W = new_reservoir_weights
 
         # set the spectral radius to 1.0
-        print("Spectral radius is set to 1, set it separately if necessary.")
+        if self.verbose:
+            print("Spectral radius is set to 1, set it separately if necessary.")
         self.rho = 1.0
         return
 
@@ -191,7 +200,8 @@ class ESN:
         # first check the dimensions
         if new_output_weights.shape != self.W_out_shape:
             raise ValueError(
-                f"The shape of the provided reservoir weights does not match with the network, {new_output_weights.shape} != {self.W_out_shape}"
+                f"The shape of the provided reservoir weights does not match with the network,"
+                f"{new_output_weights.shape} != {self.W_out_shape}"
             )
         # set the new reservoir weights
         self.W_out = new_output_weights
@@ -297,9 +307,9 @@ class ESN:
             x_next: reservoir state in this time step (n)
         """
         # normalise the input
-        u_norm = (u - scale[0]) / scale[
-            1
-        ]  # we normalize here, so that the input is normalised in closed-loop run too?
+        u_norm = (u - scale[0]) / scale[1]
+        # we normalize here, so that the input is normalised
+        # in closed-loop run too?
 
         # augment the input with the input bias
         u_augmented = np.hstack((u_norm, self.b_in))
@@ -323,20 +333,21 @@ class ESN:
         N_t = U.shape[0]  # number of time steps
 
         # create an empty matrix to hold the reservoir states in time
-        X = np.empty(
-            (N_t + 1, self.N_reservoir)
-        )  # N_t+1 because at t = 0, we don't have input
+        X = np.empty((N_t + 1, self.N_reservoir))
+        # N_t+1 because at t = 0, we don't have input
 
         # initialise with the given initial reservoir states
         X[0, :] = x0
 
         # step in time
         for n in np.arange(1, N_t + 1):
-            X[n] = self.step(X[n - 1, :], U[n - 1, :], scale)  # update the reservoir
+            # update the reservoir
+            X[n] = self.step(X[n - 1, :], U[n - 1, :], scale)
 
         return X
 
     def closed_loop(self, x0, N_t, scale=(0, 1)):
+        # @todo: make it an option to hold X or just x in memory
         """Advances ESN in closed-loop.
         Args:
             N_t: number of time steps
@@ -362,16 +373,12 @@ class ESN:
 
         # step in time
         for n in range(1, N_t + 1):
-            X[n, :] = self.step(
-                X[n - 1, :], Y[n - 1, :], scale
-            )  # update the reservoir with the feedback from the output
-            x_augmented = np.hstack(
-                (X[n, :], self.b_out)
-            )  # augment the reservoir states with bias
-            Y[n, :] = np.dot(
-                x_augmented, self.W_out
-            )  # update the output with the reservoir states
-
+            # update the reservoir with the feedback from the output
+            X[n, :] = self.step(X[n - 1, :], Y[n - 1, :], scale)
+            # augment the reservoir states with bias
+            x_augmented = np.hstack((X[n, :], self.b_out))
+            # update the output with the reservoir states
+            Y[n, :] = np.dot(x_augmented, self.W_out)
         return X, Y
 
     def run_washout(self, U_washout, scale):
