@@ -1,10 +1,12 @@
 from functools import partial
 from itertools import product
 
+import matplotlib.pyplot as plt
 import numpy as np
 import skopt
 from skopt.learning import GaussianProcessRegressor as GPR
 from skopt.learning.gaussian_process.kernels import ConstantKernel, Matern
+from skopt.plots import plot_convergence
 from skopt.space import Real
 
 from adjoint_esn.esn import ESN
@@ -110,7 +112,7 @@ def RVC(
     # since the input data will be the same,
     # we don't rerun the open loop multiple times just to train
     # with different tikhonov coefficients
-    tikh_list = [1e-12, 1e-6]
+    tikh_list = [1e-6, 1e-3, 1e-1, 1]
     W_out_list = [None] * len(tikh_list)
     for tikh_idx, tikh in enumerate(tikh_list):
         W_out_list[tikh_idx] = my_ESN.solve_ridge(X_augmented, Y, tikh)
@@ -124,7 +126,7 @@ def RVC(
         N_steps = N_init_steps + fold * N_fwd_steps
         U_washout_fold = U[N_steps : N_washout_steps + N_steps].copy()
         Y_val = U[
-            N_washout_steps + N_steps : N_washout_steps + N_steps + N_val_steps
+            N_washout_steps + N_steps + 1 : N_washout_steps + N_steps + N_val_steps
         ].copy()
 
         # run washout before closed loop
@@ -136,6 +138,7 @@ def RVC(
 
             # predict output validation in closed-loop
             _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1, data_scale)
+            Y_val_pred = Y_val_pred[1:, :]
 
             # add the mse error with this tikh in log10 scale
             mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
@@ -196,7 +199,7 @@ def validate(
 
     # initialize dictionary to hold the minimum parameters and errors
     min_dict = {
-        "params": [[None] * n_param] * n_ensemble,
+        "params": np.zeros((n_ensemble, n_param)),
         "tikh": [None] * n_ensemble,
         "f": np.zeros(n_ensemble),
     }
@@ -241,6 +244,9 @@ def validate(
         res = run_gp_optimization(
             gp_kernel, val_func, search_space, search_grid, n_total, n_initial
         )
+        plt.figure(figsize=(8, 4))
+        plot_convergence(res)
+        # plots the best value SO FAR, not the function value of each iteration
 
         # save the best parameters
         for param_idx in range(n_param):
@@ -249,7 +255,7 @@ def validate(
                 new_param = res.x[param_idx]
             elif param_scales[param_idx] == "log10":
                 new_param = 10 ** res.x[param_idx]
-            min_dict["params"][i][param_idx] = new_param
+            min_dict["params"][i, param_idx] = new_param
 
         min_iter = np.argmin(res.func_vals)
         min_dict["tikh"][i] = tikh_hist[min_iter]
