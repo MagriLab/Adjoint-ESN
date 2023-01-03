@@ -113,15 +113,11 @@ if __name__ == "__main__":
         "--data_path", type=Path, required=True, help="path to save the data to"
     )
 
-    parser.add_argument(
-        "--dx", type=float, default=None, help="spatial spacing (default: 1e-1)"
-    )
+    parser.add_argument("--dx", type=float, default=None, help="spatial spacing")
 
+    parser.add_argument("--N_x", type=int, default=None, help="number of grid points")
     parser.add_argument(
-        "--N_x", type=int, default=None, help="spatial spacing (default: 1e-1)"
-    )
-    parser.add_argument(
-        "--dt", type=float, default=1e-3, help="temporal spacing (default: 1e-1)"
+        "--dt", type=float, default=1e-3, help="temporal spacing (default: 1e-3)"
     )
 
     parser.add_argument(

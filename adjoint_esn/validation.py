@@ -81,7 +81,6 @@ def RVC(
     U_washout,
     U,
     Y,
-    data_scale,
     n_folds,
     N_init_steps,
     N_fwd_steps,
@@ -106,7 +105,7 @@ def RVC(
         setattr(my_ESN, param_name, new_param)
 
     # first train ESN with the complete data
-    X_augmented = my_ESN.reservoir_for_train(U_washout, U, data_scale)
+    X_augmented = my_ESN.reservoir_for_train(U_washout, U)
 
     # train for different tikhonov coefficients
     # since the input data will be the same,
@@ -130,14 +129,14 @@ def RVC(
         ].copy()
 
         # run washout before closed loop
-        x0_fold = my_ESN.run_washout(U_washout_fold, data_scale)
+        x0_fold = my_ESN.run_washout(U_washout_fold)
 
         for tikh_idx in range(len(tikh_list)):
             # set the output weights
             my_ESN.output_weights = W_out_list[tikh_idx]
 
             # predict output validation in closed-loop
-            _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1, data_scale)
+            _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1)
             Y_val_pred = Y_val_pred[1:, :]
 
             # add the mse error with this tikh in log10 scale
@@ -175,7 +174,6 @@ def validate(
     U_washout,
     U,
     Y,
-    data_scale,
     n_folds,
     N_init_steps,
     N_fwd_steps,
@@ -232,7 +230,6 @@ def validate(
             U_washout=U_washout,
             U=U,
             Y=Y,
-            data_scale=data_scale,
             n_folds=n_folds,
             N_init_steps=N_init_steps,
             N_fwd_steps=N_fwd_steps,

@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, lil_matrix
 from scipy.sparse.linalg import eigs as sparse_eigs
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
 
 class ESN:
@@ -10,6 +10,7 @@ class ESN:
         reservoir_size,
         dimension,
         reservoir_connectivity,
+        input_normalization,
         input_scaling=1.0,
         spectral_radius=1.0,
         leak_factor=1.0,
@@ -25,11 +26,16 @@ class ESN:
                 #@todo: separate input and output dimensions
             reservoir_connectivity: connectivity of the reservoir weights,
                 how many connections does each neuron have (on average)
+            input_normalization: normalization applied to the input before activation
+                tuple with (mean, norm) such that u is updated as (u-mean)/norm
             input_scaling: scaling applied to the input weights matrix
             spectral_radius: spectral radius (maximum absolute eigenvalue)
                 of the reservoir weights matrix
             leak_factor: factor for the leaky integrator
                 if set to 1 (default), then no leak is applied
+            input_bias: bias that is augmented to the input vector
+            input_seeds: seeds to generate input weights matrix
+            reservoir_seeds: seeds to generate reservoir weights matrix
         Returns:
             ESN object
 
@@ -44,6 +50,9 @@ class ESN:
         self.reservoir_connectivity = reservoir_connectivity
 
         self.leak_factor = leak_factor
+
+        ## Input normalization
+        self.input_normalization = input_normalization
 
         ## Weights
         # the object should also store the seeds for reproduction
@@ -109,6 +118,16 @@ class ESN:
             raise ValueError("Tikhonov coefficient must be greater than 0.")
         self.tikh = new_tikhonov
         return
+
+    @property
+    def input_normalization(self):
+        return self.norm_in
+
+    @input_normalization.setter
+    def input_normalization(self, new_input_normalization):
+        self.norm_in = new_input_normalization
+        if self.verbose:
+            print("Input normalization is changed, training must be done again.")
 
     @property
     def input_scaling(self):
@@ -297,17 +316,16 @@ class ESN:
 
         return W
 
-    def step(self, x_prev, u, scale=(0, 1)):
+    def step(self, x_prev, u):
         """Advances ESN time step.
         Args:
             x_prev: reservoir state in the previous time step (n-1)
             u: input in this time step (n)
-            scale: tuple that contains the scaling parameters for input
         Returns:
             x_next: reservoir state in this time step (n)
         """
         # normalise the input
-        u_norm = (u - scale[0]) / scale[1]
+        u_norm = (u - self.norm_in[0]) / self.norm_in[1]
         # we normalize here, so that the input is normalised
         # in closed-loop run too?
 
@@ -321,12 +339,11 @@ class ESN:
         x = (1 - self.alpha) * x_prev + self.alpha * x_tilde
         return x
 
-    def open_loop(self, x0, U, scale=(0, 1)):
+    def open_loop(self, x0, U):
         """Advances ESN in open-loop.
         Args:
             x0: initial reservoir state
             U: input time series in matrix form (N_t x N_dim)
-            scale: tuple that contains the scaling parameters for input
         Returns:
             X: time series of the reservoir states (N_t x N_reservoir)
         """
@@ -342,17 +359,16 @@ class ESN:
         # step in time
         for n in np.arange(1, N_t + 1):
             # update the reservoir
-            X[n] = self.step(X[n - 1, :], U[n - 1, :], scale)
+            X[n] = self.step(X[n - 1, :], U[n - 1, :])
 
         return X
 
-    def closed_loop(self, x0, N_t, scale=(0, 1)):
+    def closed_loop(self, x0, N_t):
         # @todo: make it an option to hold X or just x in memory
         """Advances ESN in closed-loop.
         Args:
             N_t: number of time steps
             x0: initial reservoir state
-            scale: tuple that contains the scaling parameters for input
         Returns:
             X: time series of the reservoir states (N_t x N_reservoir)
             Y: time series of the output (N_t x N_dim)
@@ -374,33 +390,32 @@ class ESN:
         # step in time
         for n in range(1, N_t + 1):
             # update the reservoir with the feedback from the output
-            X[n, :] = self.step(X[n - 1, :], Y[n - 1, :], scale)
+            X[n, :] = self.step(X[n - 1, :], Y[n - 1, :])
             # augment the reservoir states with bias
             x_augmented = np.hstack((X[n, :], self.b_out))
             # update the output with the reservoir states
             Y[n, :] = np.dot(x_augmented, self.W_out)
         return X, Y
 
-    def run_washout(self, U_washout, scale):
+    def run_washout(self, U_washout):
         # Wash-out phase to get rid of the effects of reservoir states initialised as zero
-        x0_washout = np.zeros(
-            self.N_reservoir
-        )  # initialise the reservoir states before washout
+        # initialise the reservoir states before washout
+        x0_washout = np.zeros(self.N_reservoir)
 
         # let the ESN run in open-loop for the wash-out
         # get the initial reservoir to start the actual open/closed-loop,
         # which is the last reservoir state
-        x0 = self.open_loop(x0=x0_washout, U=U_washout, scale=scale)[-1, :]
+        x0 = self.open_loop(x0=x0_washout, U=U_washout)[-1, :]
         return x0
 
-    def open_loop_with_washout(self, U_washout, U, scale):
-        x0 = self.run_washout(U_washout, scale)
-        X = self.open_loop(x0=x0, U=U, scale=scale)
+    def open_loop_with_washout(self, U_washout, U):
+        x0 = self.run_washout(U_washout)
+        X = self.open_loop(x0=x0, U=U)
         return X
 
-    def closed_loop_with_washout(self, U_washout, N_t, scale):
-        x0 = self.run_washout(U_washout, scale)
-        X, Y = self.closed_loop(x0=x0, N_t=N_t, scale=scale)
+    def closed_loop_with_washout(self, U_washout, N_t):
+        x0 = self.run_washout(U_washout)
+        X, Y = self.closed_loop(x0=x0, N_t=N_t)
         return X, Y
 
     def solve_ridge(self, X, Y, tikh):
@@ -416,14 +431,16 @@ class ESN:
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
         reg = Ridge(alpha=tikh, fit_intercept=False)
+        # reg = Lasso(alpha=tikh, max_iter = 5000, fit_intercept=False)
+        # reg = ElasticNet(alpha=tikh, l1_ratio = 0.1, max_iter = 5000, fit_intercept=False)
         reg.fit(X, Y)
         W_out = (
             reg.coef_.T
         )  # we take the transpose because of how the closed loop is structured
         return W_out
 
-    def reservoir_for_train(self, U_washout, U_train, scale):
-        X_train = self.open_loop_with_washout(U_washout, U_train, scale)
+    def reservoir_for_train(self, U_washout, U_train):
+        X_train = self.open_loop_with_washout(U_washout, U_train)
 
         # X_train is one step longer than U_train and Y_train, we discard the initial state
         X_train = X_train[1:, :]
@@ -433,19 +450,83 @@ class ESN:
         X_train_augmented = np.hstack((X_train, self.b_out * np.ones((N_t, 1))))
         return X_train_augmented
 
-    def train(self, U_washout, U_train, Y_train, tikhonov=1e-12, scale=(0, 1)):
+    def train(self, U_washout, U_train, Y_train, tikhonov=1e-12):
         """Trains ESN and sets the output weights.
         Args:
             U_washout: washout input time series
             U_train: training input time series
             Y_train: training output time series
-            scale: tuple that contains the scaling parameters for input
         """
         # get the training input
         # this is the reservoir states augmented with the bias after a washout phase
-        X_train_augmented = self.reservoir_for_train(U_washout, U_train, scale)
+        X_train_augmented = self.reservoir_for_train(U_washout, U_train)
 
         # solve for W_out using ridge regression
         self.tikhonov = tikhonov  # set the tikhonov during training
         self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
         return
+
+    # Georgios implementation
+    # def const_jac(self):
+    #    dfdu = np.r_[np.diag(1/self.norm_in[1]),[np.zeros(self.N_dim)]]
+    #    d = self.W_in.dot(dfdu)
+    #    c = np.matmul(d,self.W_out[:self.N_reservoir,:].T)
+    #    return c, self.W.dot(np.diag(np.ones(self.N_reservoir)*1.0))
+    # def jac(self, x):
+    #    """ Jacobian of the reservoir states, ESN in closed loop
+    #    taken from
+    #    Georgios Margazoglou, Luca Magri:
+    #    Stability analysis of chaotic systems from data, arXiv preprint arXiv:2210.06167
+    #    x(i+1) = f(x(i),u(i))
+    #    df(x(i),u(i))/dx(i) = \partial f/\partial x(i) + \partial f/\partial u(i)*\partial u(i)/\partial x(i)
+    #    Args:
+    #    """
+    #    diag_mat = np.diag(1 - x*x)
+    #    const_jac_a, const_jac_b = self.const_jac()
+    #    jacobian =  np.matmul(diag_mat,const_jac_a) + np.matmul(diag_mat,const_jac_b)
+    #    return jacobian
+
+    @property
+    def dfdu_const(self):
+        if not hasattr(self, "_dfdu_const"):
+            self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
+                1 / self.norm_in[1]
+            )
+        return self._dfdu_const
+
+    @property
+    def dudr(self):
+        if not hasattr(self, "_dudr"):
+            self._dudr = self.W_out[: self.N_reservoir, :].T
+        return self._dudr
+
+    @property
+    def dfdu_dudr_const(self):
+        if not hasattr(self, "_dfdu_dudr_const"):
+            self._dfdu_dudr_const = csr_matrix(self.dfdu_const.dot(self.dudr))
+        return self._dfdu_dudr_const
+
+    @property
+    def dfdr_r_const(self):
+        if not hasattr(self, "_dfdr_r_const"):
+            self._dfdr_r_const = csr_matrix((1 - self.alpha) * np.eye(self.N_reservoir))
+        return self._dfdr_r_const
+
+    def jac(self, x):
+        """Jacobian of the reservoir states, ESN in closed loop
+        taken from
+        Georgios Margazoglou, Luca Magri:
+        Stability analysis of chaotic systems from data, arXiv preprint arXiv:2210.06167
+        x(i+1) = f(x(i),u(i))
+        df(x(i),u(i))/dx(i) = \partial f/\partial x(i) + \partial f/\partial u(i)*\partial u(i)/\partial x(i)
+        Args:
+        x: reservoir states at time i+1, x(i+1)
+        Returns:
+        dfdr: jacobian of the reservoir states, csr_matrix
+        """
+        dtanh = 1 - x**2
+        dtanh = dtanh[:, None]
+        dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
+        dfdr_r = self.dfdr_r_const + self.W.multiply(dtanh)
+        dfdr = dfdr_r + dfdr_u
+        return dfdr
