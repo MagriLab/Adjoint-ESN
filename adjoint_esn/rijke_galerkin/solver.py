@@ -361,10 +361,10 @@ class Rijke:
             vq: values at the queried points
         """
         j = int(xq * inv_dx)
-        xx = (xq - x[j]) * inv_dx
         if j >= len(x) - 1:
             vq = v[-1, :]
         else:
+            xx = (xq - x[j]) * inv_dx
             vq = v[j, :] * (1 - xx) + v[j + 1, :] * xx
         return vq
 

@@ -68,3 +68,46 @@ class Lorenz96:
             dFdx[i, (i - 2) % D] = -x[(i - 1) % D]
             dFdx[i, i] = -1.0
         return dFdx
+
+
+class RoesslerLorenz:
+    def __init__(self, a, b, c, mu, r, d, epsilon, t_lyap=None):
+        """Create a coupled Roessler-Lorenz system instance with the given parameters"""
+        self.a = a
+        self.b = b
+        self.c = c
+        self.mu = mu
+        self.r = r
+        self.d = d
+        self.epsilon = epsilon
+        self.t_lyap = t_lyap
+        self.N_dim = 6
+
+    @property
+    def params(self):
+        """Returns a dictionary containing only the system parameters"""
+        return {
+            "a": self.a,
+            "b": self.b,
+            "c": self.c,
+            "mu": self.mu,
+            "r": self.r,
+            "d": self.d,
+            "epsilon": self.epsilon,
+        }
+
+    def ode(self, u, t):
+        """Lorenz63 system ode
+        t: time
+        u: state vector, contains x, y, z
+        """
+        x1, x2, x3, y1, y2, y3 = u
+        dx1dt = -x2 - x3
+        dx2dt = x1 + self.a * x2 + self.epsilon * (y2 - x2)
+        dx3dt = self.b + x3 * (x1 - self.c)
+        dy1dt = self.mu * (y2 - y1)
+        dy2dt = -y1 * y3 - y2 + self.r * y1 + self.epsilon * (x2 - y2)
+        dy3dt = y1 * y2 - self.d * y3
+
+        dudt = np.array([dx1dt, dx2dt, dx3dt, dy1dt, dy2dt, dy3dt])
+        return dudt

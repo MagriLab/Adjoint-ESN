@@ -11,11 +11,13 @@ class ESN:
         dimension,
         reservoir_connectivity,
         input_normalization,
+        parameter_dimension=0,
+        parameter_normalization=[np.array([0.0]), np.array([1.0])],
         input_scaling=1.0,
         spectral_radius=1.0,
         leak_factor=1.0,
         input_bias=1.0,
-        input_seeds=[0, 1],
+        input_seeds=[0, 1, 10],
         reservoir_seeds=[2, 3],
         verbose=True,
     ):
@@ -24,6 +26,7 @@ class ESN:
             reservoir_size: number of neurons in the reservoir
             dimension: dimension of the state space of the input and output
                 #@todo: separate input and output dimensions
+            parameter_dimension: dimension of the system's bifurcation parameters
             reservoir_connectivity: connectivity of the reservoir weights,
                 how many connections does each neuron have (on average)
             input_normalization: normalization applied to the input before activation
@@ -46,6 +49,7 @@ class ESN:
         # the matrix dimensions, and the matrices can become incompatible
         self.N_reservoir = reservoir_size
         self.N_dim = dimension
+        self.N_param_dim = parameter_dimension
 
         self.reservoir_connectivity = reservoir_connectivity
 
@@ -53,12 +57,13 @@ class ESN:
 
         ## Input normalization
         self.input_normalization = input_normalization
+        self.parameter_normalization = parameter_normalization
 
         ## Weights
         # the object should also store the seeds for reproduction
         # initialise input weights
         self.W_in_seeds = input_seeds
-        self.W_in_shape = (self.N_reservoir, self.N_dim + 1)
+        self.W_in_shape = (self.N_reservoir, self.N_dim + 1 + self.N_param_dim)
         # N_dim+1 because we augment the inputs with a bias
         self.input_weights = self.generate_input_weights()
         self.input_scaling = input_scaling
@@ -128,6 +133,36 @@ class ESN:
         self.norm_in = new_input_normalization
         if self.verbose:
             print("Input normalization is changed, training must be done again.")
+
+    @property
+    def parameter_normalization_mean(self):
+        return self.norm_p[0]
+
+    @parameter_normalization_mean.setter
+    def parameter_normalization_mean(self, new_parameter_normalization_mean):
+        self.norm_p[0] = new_parameter_normalization_mean
+        if self.verbose:
+            print("Parameter normalization is changed, training must be done again.")
+
+    @property
+    def parameter_normalization_var(self):
+        return self.norm_p[1]
+
+    @parameter_normalization_var.setter
+    def parameter_normalization_var(self, new_parameter_normalization_var):
+        self.norm_p[1] = new_parameter_normalization_var
+        if self.verbose:
+            print("Parameter normalization is changed, training must be done again.")
+
+    @property
+    def parameter_normalization(self):
+        return self.norm_p
+
+    @parameter_normalization.setter
+    def parameter_normalization(self, new_parameter_normalization):
+        self.norm_p = new_parameter_normalization
+        if self.verbose:
+            print("Parameter normalization is changed, training must be done again.")
 
     @property
     def input_scaling(self):
@@ -265,14 +300,22 @@ class ESN:
         # set the seeds
         rnd0 = np.random.RandomState(self.W_in_seeds[0])
         rnd1 = np.random.RandomState(self.W_in_seeds[1])
+        rnd2 = np.random.RandomState(self.W_in_seeds[2])
 
         # make W_in
         for j in range(self.N_reservoir):
             rnd_idx = rnd0.randint(0, self.N_dim + 1)
             # only one element different from zero
-            W_in[j, rnd_idx] = rnd1.uniform(
-                -1, 1
-            )  # sample from the uniform distribution
+            # sample from the uniform distribution
+            W_in[j, rnd_idx] = rnd1.uniform(-1, 1)
+
+        # input associated with system's bifurcation parameters are
+        # fully connected to the reservoir states
+        if self.N_param_dim > 0:
+            W_in[:, -self.N_param_dim :] = rnd2.uniform(
+                -1, 1, (self.N_reservoir, self.N_param_dim)
+            )
+
         W_in = W_in.tocsr()
 
         return W_in
@@ -316,11 +359,12 @@ class ESN:
 
         return W
 
-    def step(self, x_prev, u):
+    def step(self, x_prev, u, p=None):
         """Advances ESN time step.
         Args:
             x_prev: reservoir state in the previous time step (n-1)
             u: input in this time step (n)
+            p: systems bifucation parameters vector
         Returns:
             x_next: reservoir state in this time step (n)
         """
@@ -332,6 +376,12 @@ class ESN:
         # augment the input with the input bias
         u_augmented = np.hstack((u_norm, self.b_in))
 
+        # augment the input with the parameters
+        if self.N_param_dim > 0:
+            u_augmented = np.hstack(
+                (u_augmented, (p - self.norm_p[0]) / self.norm_p[1])
+            )
+
         # update the reservoir
         x_tilde = np.tanh(self.W_in.dot(u_augmented) + self.W.dot(x_prev))
 
@@ -339,11 +389,12 @@ class ESN:
         x = (1 - self.alpha) * x_prev + self.alpha * x_tilde
         return x
 
-    def open_loop(self, x0, U):
+    def open_loop(self, x0, U, P=None):
         """Advances ESN in open-loop.
         Args:
             x0: initial reservoir state
             U: input time series in matrix form (N_t x N_dim)
+            P: parameter time series (N_t x N_param_dim)
         Returns:
             X: time series of the reservoir states (N_t x N_reservoir)
         """
@@ -359,16 +410,20 @@ class ESN:
         # step in time
         for n in np.arange(1, N_t + 1):
             # update the reservoir
-            X[n] = self.step(X[n - 1, :], U[n - 1, :])
+            if self.N_param_dim > 0:
+                X[n] = self.step(X[n - 1, :], U[n - 1, :], P[n - 1, :])
+            else:
+                X[n] = self.step(X[n - 1, :], U[n - 1, :])
 
         return X
 
-    def closed_loop(self, x0, N_t):
+    def closed_loop(self, x0, N_t, P=None):
         # @todo: make it an option to hold X or just x in memory
         """Advances ESN in closed-loop.
         Args:
             N_t: number of time steps
             x0: initial reservoir state
+            P: parameter time series (N_t x N_param_dim)
         Returns:
             X: time series of the reservoir states (N_t x N_reservoir)
             Y: time series of the output (N_t x N_dim)
@@ -390,14 +445,18 @@ class ESN:
         # step in time
         for n in range(1, N_t + 1):
             # update the reservoir with the feedback from the output
-            X[n, :] = self.step(X[n - 1, :], Y[n - 1, :])
+            if self.N_param_dim > 0:
+                X[n, :] = self.step(X[n - 1, :], Y[n - 1, :], P[n - 1, :])
+            else:
+                X[n, :] = self.step(X[n - 1, :], Y[n - 1, :])
+
             # augment the reservoir states with bias
             x_augmented = np.hstack((X[n, :], self.b_out))
             # update the output with the reservoir states
             Y[n, :] = np.dot(x_augmented, self.W_out)
         return X, Y
 
-    def run_washout(self, U_washout):
+    def run_washout(self, U_washout, P_washout=None):
         # Wash-out phase to get rid of the effects of reservoir states initialised as zero
         # initialise the reservoir states before washout
         x0_washout = np.zeros(self.N_reservoir)
@@ -405,17 +464,17 @@ class ESN:
         # let the ESN run in open-loop for the wash-out
         # get the initial reservoir to start the actual open/closed-loop,
         # which is the last reservoir state
-        x0 = self.open_loop(x0=x0_washout, U=U_washout)[-1, :]
+        x0 = self.open_loop(x0=x0_washout, U=U_washout, P=P_washout)[-1, :]
         return x0
 
-    def open_loop_with_washout(self, U_washout, U):
-        x0 = self.run_washout(U_washout)
-        X = self.open_loop(x0=x0, U=U)
+    def open_loop_with_washout(self, U_washout, U, P_washout=None, P=None):
+        x0 = self.run_washout(U_washout, P_washout)
+        X = self.open_loop(x0=x0, U=U, P=P)
         return X
 
-    def closed_loop_with_washout(self, U_washout, N_t):
-        x0 = self.run_washout(U_washout)
-        X, Y = self.closed_loop(x0=x0, N_t=N_t)
+    def closed_loop_with_washout(self, U_washout, N_t, P_washout=None, P=None):
+        x0 = self.run_washout(U_washout, P_washout)
+        X, Y = self.closed_loop(x0=x0, N_t=N_t, P=P)
         return X, Y
 
     def solve_ridge(self, X, Y, tikh):
@@ -439,8 +498,8 @@ class ESN:
         )  # we take the transpose because of how the closed loop is structured
         return W_out
 
-    def reservoir_for_train(self, U_washout, U_train):
-        X_train = self.open_loop_with_washout(U_washout, U_train)
+    def reservoir_for_train(self, U_washout, U_train, P_washout=None, P_train=None):
+        X_train = self.open_loop_with_washout(U_washout, U_train, P_washout, P_train)
 
         # X_train is one step longer than U_train and Y_train, we discard the initial state
         X_train = X_train[1:, :]
@@ -450,16 +509,33 @@ class ESN:
         X_train_augmented = np.hstack((X_train, self.b_out * np.ones((N_t, 1))))
         return X_train_augmented
 
-    def train(self, U_washout, U_train, Y_train, tikhonov=1e-12):
+    def train(
+        self, U_washout, U_train, Y_train, P_washout=None, P_train=None, tikhonov=1e-12
+    ):
         """Trains ESN and sets the output weights.
         Args:
             U_washout: washout input time series
             U_train: training input time series
             Y_train: training output time series
+            (list of time series if more than one trajectories)
         """
         # get the training input
         # this is the reservoir states augmented with the bias after a washout phase
-        X_train_augmented = self.reservoir_for_train(U_washout, U_train)
+        if isinstance(U_train, list):
+            X_train_augmented = np.empty((0, self.N_reservoir + 1))
+            for train_idx in range(len(U_train)):
+                X_train_augmented_ = self.reservoir_for_train(
+                    U_washout[train_idx],
+                    U_train[train_idx],
+                    P_washout[train_idx],
+                    P_train[train_idx],
+                )
+                X_train_augmented = np.vstack((X_train_augmented, X_train_augmented_))
+            Y_train = np.vstack(Y_train)
+        else:
+            X_train_augmented = self.reservoir_for_train(
+                U_washout, U_train, P_washout, P_train
+            )
 
         # solve for W_out using ridge regression
         self.tikhonov = tikhonov  # set the tikhonov during training
@@ -490,7 +566,7 @@ class ESN:
     def dfdu_const(self):
         if not hasattr(self, "_dfdu_const"):
             self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
-                1 / self.norm_in[1]
+                1.0 / self.norm_in[1]
             )
         return self._dfdu_const
 
@@ -524,9 +600,30 @@ class ESN:
         Returns:
         dfdr: jacobian of the reservoir states, csr_matrix
         """
-        dtanh = 1 - x**2
+        dtanh = 1.0 - x**2
         dtanh = dtanh[:, None]
         dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
         dfdr_r = self.dfdr_r_const + self.W.multiply(dtanh)
         dfdr = dfdr_r + dfdr_u
         return dfdr
+
+    @property
+    def drdp_const(self):
+        if not hasattr(self, "_drdp_const"):
+            self._drdp_const = self.alpha * self.W_in[:, -self.N_param_dim :].multiply(
+                1.0 / self.norm_p[1]
+            )
+        return self._drdp_const
+
+    def drdp(self, x):
+        """Jacobian of the reservoir states with respect to the parameters
+        \partial x(i) / \partial p
+        Args:
+        x: reservoir states at time i+1, x(i+1)
+        Returns:
+        drdp: csr_matrix?
+        """
+        dtanh = 1.0 - x**2
+        dtanh = dtanh[:, None]
+        drdp = self.drdp_const.multiply(dtanh)
+        return drdp

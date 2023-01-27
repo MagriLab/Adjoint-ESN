@@ -88,6 +88,8 @@ def RVC(
     N_val_steps,
     tikh_hist=None,
     print_flag=False,
+    P_washout=None,
+    P=None,
 ):
     """Recycle cross validation method from
     Alberto Racca, Luca Magri:
@@ -105,45 +107,102 @@ def RVC(
         setattr(my_ESN, param_name, new_param)
 
     # first train ESN with the complete data
-    X_augmented = my_ESN.reservoir_for_train(U_washout, U)
+    # X_augmented = my_ESN.reservoir_for_train(U_washout, U)
+    if isinstance(U, list):
+        X_augmented = np.empty((0, my_ESN.N_reservoir + 1))
+        for train_idx in range(len(U)):
+            X_augmented_ = my_ESN.reservoir_for_train(
+                U_washout[train_idx], U[train_idx], P_washout[train_idx], P[train_idx]
+            )
+            X_augmented = np.vstack((X_augmented, X_augmented_))
+        Y = np.vstack(Y)
+    else:
+        X_augmented = my_ESN.reservoir_for_train(U_washout, U)
 
     # train for different tikhonov coefficients
     # since the input data will be the same,
     # we don't rerun the open loop multiple times just to train
     # with different tikhonov coefficients
-    tikh_list = [1e-6, 1e-3, 1e-1, 1]
+    tikh_list = [1e-3, 1e-2, 1e-1, 1, 10]
     W_out_list = [None] * len(tikh_list)
     for tikh_idx, tikh in enumerate(tikh_list):
         W_out_list[tikh_idx] = my_ESN.solve_ridge(X_augmented, Y, tikh)
 
     # save the MSE error with each tikhonov coefficient over all folds
-    mse_sum = np.zeros(len(tikh_list))
 
-    # validate with different folds
-    for fold in range(n_folds):
-        # select washout and validation
-        N_steps = N_init_steps + fold * N_fwd_steps
-        U_washout_fold = U[N_steps : N_washout_steps + N_steps].copy()
-        Y_val = U[
-            N_washout_steps + N_steps + 1 : N_washout_steps + N_steps + N_val_steps
-        ].copy()
+    if isinstance(U, list):
+        mse_mean = np.zeros(len(tikh_list))
+        for train_idx in range(len(U)):
+            # validate with different folds
+            mse_sum = np.zeros(len(tikh_list))
+            for fold in range(n_folds):
+                # select washout and validation
+                N_steps = N_init_steps + fold * N_fwd_steps
+                U_washout_fold = U[train_idx][
+                    N_steps : N_washout_steps + N_steps
+                ].copy()
+                P_washout_fold = P[train_idx][
+                    N_steps : N_washout_steps + N_steps
+                ].copy()
+                Y_val = U[train_idx][
+                    N_washout_steps
+                    + N_steps
+                    + 1 : N_washout_steps
+                    + N_steps
+                    + N_val_steps
+                ].copy()
+                P_val = P[train_idx][
+                    N_washout_steps
+                    + N_steps
+                    + 1 : N_washout_steps
+                    + N_steps
+                    + N_val_steps
+                ].copy()
+                # run washout before closed loop
+                x0_fold = my_ESN.run_washout(U_washout_fold, P_washout_fold)
 
-        # run washout before closed loop
-        x0_fold = my_ESN.run_washout(U_washout_fold)
+                for tikh_idx in range(len(tikh_list)):
+                    # set the output weights
+                    my_ESN.output_weights = W_out_list[tikh_idx]
 
-        for tikh_idx in range(len(tikh_list)):
-            # set the output weights
-            my_ESN.output_weights = W_out_list[tikh_idx]
+                    # predict output validation in closed-loop
+                    _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1, P_val)
+                    Y_val_pred = Y_val_pred[1:, :]
 
-            # predict output validation in closed-loop
-            _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1)
-            Y_val_pred = Y_val_pred[1:, :]
+                    # add the mse error with this tikh in log10 scale
+                    mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
 
-            # add the mse error with this tikh in log10 scale
-            mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
+            # find the mean mse over folds
+            mse_mean += mse_sum / n_folds
 
-    # find the mean mse
-    mse_mean = mse_sum / n_folds
+        # find mean mse over different trajectories
+        mse_mean = mse_mean / len(U)
+    else:
+        mse_sum = np.zeros(len(tikh_list))
+        for fold in range(n_folds):
+            # select washout and validation
+            N_steps = N_init_steps + fold * N_fwd_steps
+            U_washout_fold = U[train_idx][N_steps : N_washout_steps + N_steps].copy()
+            Y_val = U[train_idx][
+                N_washout_steps + N_steps + 1 : N_washout_steps + N_steps + N_val_steps
+            ].copy()
+
+            # run washout before closed loop
+            x0_fold = my_ESN.run_washout(U_washout_fold)
+
+            for tikh_idx in range(len(tikh_list)):
+                # set the output weights
+                my_ESN.output_weights = W_out_list[tikh_idx]
+
+                # predict output validation in closed-loop
+                _, Y_val_pred = my_ESN.closed_loop(x0_fold, N_val_steps - 1)
+                Y_val_pred = Y_val_pred[1:, :]
+
+                # add the mse error with this tikh in log10 scale
+                mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
+
+        # find the mean mse over folds
+        mse_mean = mse_sum / n_folds
 
     # select the optimal tikh
     tikh_min_idx = np.argmin(mse_mean)
@@ -173,6 +232,8 @@ def validate(
     ESN_dict,
     U_washout,
     U,
+    P_washout,
+    P,
     Y,
     n_folds,
     N_init_steps,
@@ -204,8 +265,8 @@ def validate(
 
     for i in range(n_ensemble):
         # set the seeds for each realization of ESN
-        input_seeds = [4 * i, 4 * i + 1]
-        reservoir_seeds = [4 * i + 2, 4 * i + 3]
+        input_seeds = [4 * i, 4 * i + 1, 4 * i + 2]
+        reservoir_seeds = [4 * i + 3, 4 * i + 4]
 
         # initialize a base ESN object with unit input scaling and spectral radius
         my_ESN = ESN(
@@ -236,6 +297,8 @@ def validate(
             N_washout_steps=N_washout_steps,
             N_val_steps=N_val_steps,
             tikh_hist=tikh_hist,
+            P_washout=P_washout,
+            P=P,
         )
 
         res = run_gp_optimization(
