@@ -1,10 +1,16 @@
 import argparse
+import os
+import sys
 from pathlib import Path
 
 import h5py
 import numpy as np
 from scipy.integrate import odeint
-from solver import Rijke
+
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+sys.path.append(root)
+
+from adjoint_esn.rijke_galerkin.solver import Rijke
 
 
 # @todo: saving config file
@@ -49,9 +55,12 @@ def main(args):
     )
 
     # Initial conditions
-    rand = np.random.RandomState(seed=args.seed)
-    y0 = np.zeros(rjk.N_dim + 2)
-    y0[0 : rjk.N_dim] = rand.rand(rjk.N_dim)
+    y0 = np.zeros(rjk.N_dim + 1)
+    if args.seed is not None:
+        rand = np.random.RandomState(seed=args.seed)
+        y0[0 : rjk.N_dim] = rand.rand(rjk.N_dim)
+    else:
+        y0[0] = 1
 
     # Temporal grid
     t = np.arange(0, args.simulation_time + args.dt, args.dt)
@@ -63,20 +72,11 @@ def main(args):
     eta = y[:, 0 : rjk.N_g]  # Galerkin variables velocity
     mu = y[:, rjk.N_g : 2 * rjk.N_g]  # Galerkin variables pressure
 
-    v = y[:, 2 * rjk.N_g : rjk.N_dim]  # advection variable for time delay
+    # v = y[:, 2 * rjk.N_g : rjk.N_dim]  # advection variable for time delay
 
-    q_dot = y[:, -2]  # heat release rate
+    # q_dot = y[:, -2]  # heat release rate
 
     J = 1 / t[-1] * (y[-1, -1] - y[0, -1])  # time-averaged acoustic energy
-
-    # Spatial grid
-    if args.dx is not None:
-        x = np.arange(0, 1 + args.dx, args.dx)
-    elif args.N_x is not None:
-        x = np.linspace(0, 1, args.N_x)
-
-    P = Rijke.toPressure(rjk.N_g, mu, x)  # pressure field
-    U = Rijke.toVelocity(rjk.N_g, eta, x)  # velocity field
 
     data_dict = {
         "N_g": rjk.N_g,
@@ -90,13 +90,42 @@ def main(args):
         "damping": rjk.damping,
         "t_transient": args.transient_time,
         "t": t,
-        "x": x,
         "y": y,
         "J": J,
-        "P": P,
-        "U": U,
-        "Q": q_dot,
     }
+
+    if args.grad_adjoint:
+        N_transient = int(np.round(args.transient_time / args.dt))
+        y_bar = y[N_transient:, :]
+        t_bar = t[N_transient:] - t[N_transient]
+        # adjoint problem
+        adjT = np.zeros(rjk.N_dim + 2)
+        adj = odeint(
+            rjk.adjoint_ode,
+            adjT,
+            np.flip(t_bar),
+            args=(t_bar, 1 / args.dt, y_bar),
+            tfirst=True,
+        )
+        dJ_dbeta = 1 / t_bar[-1] * adj[-1, -2]
+        dJ_dtau = 1 / t_bar[-1] * adj[-1, -1]
+        data_dict["adj"] = adj
+        data_dict["dJ_dbeta"] = dJ_dbeta
+        data_dict["dJ_dtau"] = dJ_dtau
+
+    # Spatial grid
+    if args.dx is not None and args.N_x is not None:
+        if args.dx is not None:
+            x = np.arange(0, 1 + args.dx, args.dx)
+        elif args.N_x is not None:
+            x = np.linspace(0, 1, args.N_x)
+
+        P = Rijke.toPressure(rjk.N_g, mu, x)  # pressure field
+        U = Rijke.toVelocity(rjk.N_g, eta, x)  # velocity field
+
+        data_dict["x"] = x
+        data_dict["P"] = P
+        data_dict["U"] = U
 
     print("Writing to file.")
     write_h5(args.data_path, data_dict)
@@ -113,9 +142,16 @@ if __name__ == "__main__":
         "--data_path", type=Path, required=True, help="path to save the data to"
     )
 
+    parser.add_argument(
+        "--grad_adjoint",
+        type=bool,
+        default=False,
+        help="whether to run the adjoint code to obtain the gradient",
+    )
     parser.add_argument("--dx", type=float, default=None, help="spatial spacing")
 
     parser.add_argument("--N_x", type=int, default=None, help="number of grid points")
+
     parser.add_argument(
         "--dt", type=float, default=1e-3, help="temporal spacing (default: 1e-3)"
     )

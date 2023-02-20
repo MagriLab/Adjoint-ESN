@@ -69,8 +69,34 @@ def run_gp_optimization(
         n_random_starts=n_initial,  # the number of additional random initialization points
         n_restarts_optimizer=3,  # number of tries for each acquisition
         random_state=10,  # seed
+        acq_optimizer="lbfgs",
+        n_jobs=-1,  # number of cores to use
     )
     return res
+
+
+def set_ESN(my_ESN, param_names, param_scales, params):
+    # set the ESN with the new parameters
+    for param_name in set(param_names):
+        # get the unique strings in the list with set
+        # now the indices of the parameters with that name
+        # (because ESN has attributes that are set as arrays and not single scalars)
+        param_idx_list = np.where(np.array(param_names) == param_name)[0]
+
+        new_param = np.zeros(len(param_idx_list))
+        for new_idx in range(len(param_idx_list)):
+            # rescale the parameters according to the given scaling
+            param_idx = param_idx_list[new_idx]
+            if param_scales[param_idx] == "uniform":
+                new_param[new_idx] = params[param_idx]
+            elif param_scales[param_idx] == "log10":
+                new_param[new_idx] = 10 ** params[param_idx]
+
+        if len(param_idx_list) == 1:
+            new_param = new_param[0]
+
+        setattr(my_ESN, param_name, new_param)
+    return
 
 
 def RVC(
@@ -90,31 +116,42 @@ def RVC(
     print_flag=False,
     P_washout=None,
     P=None,
+    train_idx_list=None,
+    val_idx_list=None,
+    noise_std=0,
 ):
     """Recycle cross validation method from
     Alberto Racca, Luca Magri:
     Robust Optimization and Validation of Echo State Networks for
     learning chaotic dynamics. Neural Networks 142: 252-268 (2021)
     """
-    # set the ESN with the new parameters
-    for param_idx, param_name in enumerate(param_names):
-        # rescale the parameters according to the given scaling
-        if param_scales[param_idx] == "uniform":
-            new_param = params[param_idx]
-        elif param_scales[param_idx] == "log10":
-            new_param = 10 ** params[param_idx]
-
-        setattr(my_ESN, param_name, new_param)
+    set_ESN(my_ESN, param_names, param_scales, params)
 
     # first train ESN with the complete data
     # X_augmented = my_ESN.reservoir_for_train(U_washout, U)
     if isinstance(U, list):
+        if train_idx_list is None:
+            train_idx_list = range(len(U))
         X_augmented = np.empty((0, my_ESN.N_reservoir + 1))
-        for train_idx in range(len(U)):
+        for train_idx in train_idx_list:
+            # add noise
+            data_std = np.std(U[train_idx], axis=0)
+            rnd = np.random.RandomState(70 + train_idx)
+            U_washout_train = U_washout[train_idx] + rnd.normal(
+                np.zeros(U[train_idx].shape[1]),
+                (noise_std / 100) * data_std,
+                U_washout[train_idx].shape,
+            )
+            U_train = U[train_idx] + rnd.normal(
+                np.zeros(U[train_idx].shape[1]),
+                (noise_std / 100) * data_std,
+                U[train_idx].shape,
+            )
             X_augmented_ = my_ESN.reservoir_for_train(
-                U_washout[train_idx], U[train_idx], P_washout[train_idx], P[train_idx]
+                U_washout_train, U_train, P_washout[train_idx], P[train_idx]
             )
             X_augmented = np.vstack((X_augmented, X_augmented_))
+        Y = [Y[train_idx] for train_idx in train_idx_list]
         Y = np.vstack(Y)
     else:
         X_augmented = my_ESN.reservoir_for_train(U_washout, U)
@@ -132,26 +169,24 @@ def RVC(
 
     if isinstance(U, list):
         mse_mean = np.zeros(len(tikh_list))
-        for train_idx in range(len(U)):
+        if val_idx_list is None:
+            val_idx_list = range(len(U))
+        for val_idx in val_idx_list:
             # validate with different folds
             mse_sum = np.zeros(len(tikh_list))
             for fold in range(n_folds):
                 # select washout and validation
                 N_steps = N_init_steps + fold * N_fwd_steps
-                U_washout_fold = U[train_idx][
-                    N_steps : N_washout_steps + N_steps
-                ].copy()
-                P_washout_fold = P[train_idx][
-                    N_steps : N_washout_steps + N_steps
-                ].copy()
-                Y_val = U[train_idx][
+                U_washout_fold = U[val_idx][N_steps : N_washout_steps + N_steps].copy()
+                P_washout_fold = P[val_idx][N_steps : N_washout_steps + N_steps].copy()
+                Y_val = U[val_idx][
                     N_washout_steps
                     + N_steps
                     + 1 : N_washout_steps
                     + N_steps
                     + N_val_steps
                 ].copy()
-                P_val = P[train_idx][
+                P_val = P[val_idx][
                     N_washout_steps
                     + N_steps
                     + 1 : N_washout_steps
@@ -176,7 +211,7 @@ def RVC(
             mse_mean += mse_sum / n_folds
 
         # find mean mse over different trajectories
-        mse_mean = mse_mean / len(U)
+        mse_mean = mse_mean / len(val_idx_list)
     else:
         mse_sum = np.zeros(len(tikh_list))
         for fold in range(n_folds):
@@ -240,6 +275,9 @@ def validate(
     N_fwd_steps,
     N_washout_steps,
     N_val_steps,
+    train_idx_list,
+    val_idx_list,
+    noise_std,
 ):
 
     n_param = len(param_names)  # number of parameters
@@ -261,9 +299,13 @@ def validate(
         "params": np.zeros((n_ensemble, n_param)),
         "tikh": [None] * n_ensemble,
         "f": np.zeros(n_ensemble),
+        "input_seeds": [None] * n_ensemble,
+        "reservoir_seeds": [None] * n_ensemble,
     }
 
     for i in range(n_ensemble):
+        print(f"Running {i+1}/{n_ensemble} of ensemble.")
+
         # set the seeds for each realization of ESN
         input_seeds = [4 * i, 4 * i + 1, 4 * i + 2]
         reservoir_seeds = [4 * i + 3, 4 * i + 4]
@@ -273,7 +315,7 @@ def validate(
             **ESN_dict,
             input_seeds=input_seeds,
             reservoir_seeds=reservoir_seeds,
-            verbose=False
+            verbose=False,
         )
 
         # initialize a tikh history
@@ -299,13 +341,16 @@ def validate(
             tikh_hist=tikh_hist,
             P_washout=P_washout,
             P=P,
+            train_idx_list=train_idx_list,
+            val_idx_list=val_idx_list,
+            noise_std=noise_std,
         )
 
         res = run_gp_optimization(
             gp_kernel, val_func, search_space, search_grid, n_total, n_initial
         )
-        plt.figure(figsize=(8, 4))
-        plot_convergence(res)
+        # plt.figure(figsize=(8, 4))
+        # plot_convergence(res)
         # plots the best value SO FAR, not the function value of each iteration
 
         # save the best parameters
@@ -321,5 +366,8 @@ def validate(
         min_dict["tikh"][i] = tikh_hist[min_iter]
 
         min_dict["f"][i] = res.fun
+        min_dict["input_seeds"][i] = input_seeds
+        min_dict["reservoir_seeds"][i] = reservoir_seeds
+        print(min_dict)
 
     return min_dict

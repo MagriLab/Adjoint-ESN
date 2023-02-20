@@ -510,7 +510,14 @@ class ESN:
         return X_train_augmented
 
     def train(
-        self, U_washout, U_train, Y_train, P_washout=None, P_train=None, tikhonov=1e-12
+        self,
+        U_washout,
+        U_train,
+        Y_train,
+        P_washout=None,
+        P_train=None,
+        tikhonov=1e-12,
+        train_idx_list=None,
     ):
         """Trains ESN and sets the output weights.
         Args:
@@ -518,12 +525,19 @@ class ESN:
             U_train: training input time series
             Y_train: training output time series
             (list of time series if more than one trajectories)
+            P_washout: parameters in washout
+            P_train: parameters in training
+            tikhonov: regularization coefficient
+            train_idx_list: if list of time series, then which ones to use in training
+                if not specified, all are used
         """
         # get the training input
         # this is the reservoir states augmented with the bias after a washout phase
         if isinstance(U_train, list):
             X_train_augmented = np.empty((0, self.N_reservoir + 1))
-            for train_idx in range(len(U_train)):
+            if train_idx_list is None:
+                train_idx_list = range(len(U_train))
+            for train_idx in train_idx_list:
                 X_train_augmented_ = self.reservoir_for_train(
                     U_washout[train_idx],
                     U_train[train_idx],
@@ -531,6 +545,7 @@ class ESN:
                     P_train[train_idx],
                 )
                 X_train_augmented = np.vstack((X_train_augmented, X_train_augmented_))
+            Y_train = [Y_train[train_idx] for train_idx in train_idx_list]
             Y_train = np.vstack(Y_train)
         else:
             X_train_augmented = self.reservoir_for_train(

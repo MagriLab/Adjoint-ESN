@@ -24,7 +24,19 @@ class Rijke:
         self.beta = beta
         self.x_f = x_f
         self.tau = tau
+
+        # initialize the heat release law
         self.heat_law = heat_law
+        if self.heat_law == "kings":
+            self.q_dot = self.kings
+            self.dq_dot_du_f_tau = self.dkings
+        elif self.heat_law == "kings_poly":
+            self.q_dot = self.kings_poly
+            self.dq_dot_du_f_tau = self.dkings_poly
+        elif self.heat_law == "sigmoid":
+            self.q_dot = self.sigmoid
+            self.dq_dot_du_f_tau = self.dsigmoid
+
         self.damping = damping
 
     @property
@@ -184,6 +196,50 @@ class Rijke:
         u_prime = -np.matmul(eta * j * np.pi, np.sin(np.outer(j * np.pi, x)))
         return u_prime
 
+    def kings(self, u_f_tau):
+        """Compute heat release rate using King's law
+        Args:
+            u_f_tau: delayed velocity at the flame
+        """
+        return self.beta * (np.sqrt(np.abs(1.0 + u_f_tau)) - 1.0)
+
+    def kings_poly(self, u_f_tau):
+        """Compute heat release rate using smoothed King's law
+        Args:
+            u_f_tau: delayed velocity at the flame
+        """
+        if abs(u_f_tau + 1.0) < 0.01:
+            coeffs = np.array([-1.0, 0.0, 1.75e3, 6.2e-12, -7.5e6])
+            poly = np.poly1d(coeffs[::-1])
+            return self.beta * poly(1.0 + u_f_tau)
+        else:
+            return self.beta * (np.sqrt(np.abs(1.0 + u_f_tau)) - 1.0)
+
+    def sigmoid(self, u_f_tau):
+        """Compute heat release rate using sigmoid
+        Args:
+            u_f_tau: delayed velocity at the flame
+        """
+        return self.beta / (1 + np.exp(-u_f_tau))
+
+    def dkings(self, u_f_tau):
+        # not defined for \bar{u_f}(t-\tau) = -1
+        return self.beta * (1.0 + u_f_tau) / (2 * (np.abs(1.0 + u_f_tau)) ** (3 / 2))
+
+    def dkings_poly(self, u_f_tau):
+        # smoothed, so the derivative is defined
+        if abs(u_f_tau + 1.0) < 0.01:
+            coeffs = (np.array([-1.0, 0.0, 1.75e3, 6.2e-12, -7.5e6]) * np.arange(5))[1:]
+            poly = np.poly1d(coeffs[::-1])
+            return self.beta * poly(1.0 + u_f_tau)
+        else:
+            return (
+                self.beta * 0.5 / np.sqrt(abs(1.0 + u_f_tau)) * np.sign(1.0 + u_f_tau)
+            )
+
+    def dsigmoid(self, u_f_tau):
+        return self.beta * np.exp(-u_f_tau) / ((1 + np.exp(-u_f_tau)) ** 2)
+
     def ode(self, t, y):
         """Rijke system ode
 
@@ -223,20 +279,15 @@ class Rijke:
         v_dot = -2 / self.tau * np.dot(self.chebdiff, v)[1:]  # multiply by 2
         # chebyshev grid [-1,1], X = [0,1], so the speed becomes 2/\tau (from -1 to 1)
 
-        # find heat release
-        u_f_tau = v[-1]
-        if self.heat_law == "kings":
-            q_dot = self.beta * (np.sqrt(np.abs(1 + u_f_tau)) - 1)
-        elif self.heat_law == "sigmoid":
-            q_dot = self.beta / (1 + np.exp(-u_f_tau))
-
         # dmu_j/dt
-        mu_dot = -self.jpi * eta - self.zeta * mu - 2 * q_dot * self.sinjpixf
+        mu_dot = (
+            -self.jpi * eta - self.zeta * mu - 2 * self.q_dot(v[-1]) * self.sinjpixf
+        )
 
         # calculate J = \int_0^T \tilde{J} simultaneously
         J_tilde = 1 / 4 * np.sum(eta**2 + mu**2)
 
-        dydt = np.hstack([eta_dot, mu_dot, v_dot, q_dot, J_tilde])
+        dydt = np.hstack([eta_dot, mu_dot, v_dot, J_tilde])
         return dydt
 
     # Following derivatives are used in the calculation of direct and adjoint eqns
@@ -292,6 +343,18 @@ class Rijke:
             self._df3_dv = -2 / self.tau * self.chebdiff[1:, 1:]
         return self._df3_dv
 
+    @property
+    def df1_dy(self):
+        if not hasattr(self, "_df1_dy"):
+            self._df1_dy = np.hstack([self.df1_deta, self.df1_dmu, self.df1_dv])
+        return self._df1_dy
+
+    @property
+    def df3_dy(self):
+        if not hasattr(self, "_df3_dy"):
+            self._df3_dy = np.hstack([self.df3_deta, self.df3_dmu, self.df3_dv])
+        return self._df3_dy
+
     def dFdy_u_f_tau_bar(self, u_f_tau_bar):
         """Linearized system around u_f(t-\tau) = \bar{u_f}(t-\tau)
         F(dy/dt,y) = 0, dy/dt = f(y)
@@ -300,39 +363,46 @@ class Rijke:
                   [df_3/d\eta, df_3/d\mu, df_3/dv]]
         dF/dy = -df/dy
         """
-        df1_dy = np.hstack([self.df1_deta, self.df1_dmu, self.df1_dv])
-
         # The only nonlinear term that needs to be linearized
         df2_dv = np.zeros([self.N_g, self.N_c])
-        if self.heat_law == "kings":
-            # not defined for \bar{u_f}(t-\tau) = -1
-            dq_dot_du_f_tau = (
-                self.beta
-                * (1 + u_f_tau_bar)
-                / (2 * (np.abs(1 + u_f_tau_bar)) ** (3 / 2))
-            )
-        elif self.heat_law == "sigmoid":
-            dq_dot_du_f_tau = (
-                self.beta * np.exp(-u_f_tau_bar) / ((1 + np.exp(-u_f_tau_bar)) ** 2)
-            )
+
+        dq_dot_du_f_tau = self.dq_dot_du_f_tau(u_f_tau_bar)
+
         df2_dv[:, -1] = -2 * dq_dot_du_f_tau * self.sinjpixf
 
         df2_dy = np.hstack([self.df2_deta, self.df2_dmu, df2_dv])
 
-        df3_dy = np.hstack([self.df3_deta, self.df3_dmu, self.df3_dv])
-
-        dfdy = np.vstack([df1_dy, df2_dy, df3_dy])
+        dfdy = np.vstack([self.df1_dy, df2_dy, self.df3_dy])
         dFdy = -dfdy
         return dFdy
 
+    @property
+    def df1_dbeta(self):
+        if not hasattr(self, "_df1_dbeta"):
+            self._df1_dbeta = np.zeros(self.N_g)
+        return self._df1_dbeta
+
+    @property
+    def df3_dbeta(self):
+        if not hasattr(self, "_df3_dbeta"):
+            self._df3_dbeta = np.zeros(self.N_c)
+        return self._df3_dbeta
+
+    @property
+    def df1_dtau(self):
+        if not hasattr(self, "_df1_dtau"):
+            self._df1_dtau = np.zeros(self.N_g)
+        return self._df1_dtau
+
+    @property
+    def df2_dtau(self):
+        if not hasattr(self, "_df2_dtau"):
+            self._df2_dtau = np.zeros(self.N_g)
+        return self._df2_dtau
+
     def dFdp_p_bar(self, eta, v, u_f_tau):
         """Derivative of the system with respect to the parameters p_bar = [beta,tau]"""
-        df1_dbeta = np.zeros(self.N_g)
-        df2_dbeta = -2 * self.sinjpixf / (1 + np.exp(-u_f_tau))
-        df3_dbeta = np.zeros(self.N_c)
-
-        df1_dtau = np.zeros(self.N_g)
-        df2_dtau = np.zeros(self.N_g)
+        df2_dbeta = -2 * self.sinjpixf * (self.q_dot(u_f_tau) / self.beta)
 
         u_f = np.dot(eta, self.cosjpixf)
         v = np.hstack([u_f, v])
@@ -340,8 +410,8 @@ class Rijke:
             2 / (self.tau**2) * np.dot(self.chebdiff, v)[1:]
         )  # d/dtau(1/tau) = -1/tau^2
 
-        dfdbeta = np.hstack([df1_dbeta, df2_dbeta, df3_dbeta])
-        dfdtau = np.hstack([df1_dtau, df2_dtau, df3_dtau])
+        dfdbeta = np.hstack([self.df1_dbeta, df2_dbeta, self.df3_dbeta])
+        dfdtau = np.hstack([self.df1_dtau, self.df2_dtau, df3_dtau])
 
         dFdbeta = -dfdbeta
         dFdtau = -dfdtau

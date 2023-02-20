@@ -97,7 +97,7 @@ class RoesslerLorenz:
         }
 
     def ode(self, u, t):
-        """Lorenz63 system ode
+        """Coupled Roessler-Lorenz system ode
         t: time
         u: state vector, contains x, y, z
         """
@@ -110,4 +110,25 @@ class RoesslerLorenz:
         dy3dt = y1 * y2 - self.d * y3
 
         dudt = np.array([dx1dt, dx2dt, dx3dt, dy1dt, dy2dt, dy3dt])
+        return dudt
+
+
+class VanDerPol:
+    def __init__(self, mu):
+        self.mu = mu
+        self.N_dim = 2
+
+    @property
+    def params(self):
+        """Returns a dictionary containing only the system parameters"""
+        return {
+            "mu": self.mu,
+        }
+
+    def ode(self, u, t):
+        x1, x2 = u
+        dx1dt = x2
+        dx2dt = self.mu * (1 - x1**2) * x2 - x1
+
+        dudt = np.array([dx1dt, dx2dt])
         return dudt
