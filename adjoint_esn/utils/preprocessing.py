@@ -30,3 +30,7 @@ def pickle_file(file_name, data):
     pickle.dump(data, file)
     file.close()
     return
+
+
+def get_steps(t, dt):
+    return int(np.round(t / dt))

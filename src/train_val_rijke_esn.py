@@ -11,15 +11,11 @@ from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.validation import validate
 
 
-def get_steps(t, dt):
-    return int(np.round(t / dt))
-
-
 def load_data(
     data_path,
     dt=1e-1,
-    t_washout_len=4,
-    t_train_len=80,
+    t_washout_len=32,
+    t_train_len=256,
     grid_upsample=4,
     train_var="gal",
 ):
@@ -41,20 +37,20 @@ def load_data(
 
     # upsample
     data_dt = data_dict["t"][1] - data_dict["t"][0]
-    upsample = get_steps(dt, data_dt)
+    upsample = pp.get_steps(dt, data_dt)
 
     t = t_sim[::upsample]
     U = U_sim[::upsample, :]
 
     # cut the transient
     t_transient_len = data_dict["t_transient"]
-    N_transient = get_steps(t_transient_len, dt)
+    N_transient = pp.get_steps(t_transient_len, dt)
     U = U[N_transient:, :]
     t = t[N_transient:] - t[N_transient]
 
     # separate into washout, train, test
-    N_washout = get_steps(t_washout_len, dt)
-    N_train = get_steps(t_train_len, dt)
+    N_washout = pp.get_steps(t_washout_len, dt)
+    N_train = pp.get_steps(t_train_len, dt)
 
     U_washout_train = U[0:N_washout, :]
 
@@ -67,7 +63,13 @@ def load_data(
 
 
 def create_dataset(
-    p_list, dt=1e-1, t_washout_len=4, t_train_len=80, grid_upsample=4, train_var="gal"
+    p_list,
+    dt=1e-1,
+    t_washout_len=32,
+    t_train_len=256,
+    grid_upsample=4,
+    train_var="gal",
+    p_var="both",
 ):
     len_p_list = len(p_list)
     U_washout_train = [None] * len_p_list
@@ -85,7 +87,7 @@ def create_dataset(
         beta_name = beta_name.replace(".", "_")
         tau_name = f"{tau:.2f}"
         tau_name = tau_name.replace(".", "_")
-        sim_str = f"src/data_test/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5"
+        sim_str = f"src/data/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5"
         (
             U_washout_train[p_idx],
             U_train[p_idx],
@@ -93,8 +95,16 @@ def create_dataset(
             t_train[p_idx],
             U_data[p_idx],
         ) = load_data(sim_str, dt, t_washout_len, t_train_len, grid_upsample, train_var)
-        P_washout_train[p_idx] = params * np.ones((len(U_washout_train[p_idx]), 1))
-        P_train[p_idx] = params * np.ones((len(U_train[p_idx]), 1))
+        if p_var == "both":
+            train_param_var = params
+        elif p_var == "beta":
+            train_param_var = beta
+        elif p_var == "tau":
+            train_param_var = tau
+        P_washout_train[p_idx] = train_param_var * np.ones(
+            (len(U_washout_train[p_idx]), 1)
+        )
+        P_train[p_idx] = train_param_var * np.ones((len(U_train[p_idx]), 1))
     U_data = np.vstack(U_data)
     return U_washout_train, P_washout_train, U_train, P_train, Y_train, t_train, U_data
 
@@ -113,8 +123,8 @@ def input_norm_and_bias(U):
 
 def main(args):
     # mesh to choose training data from
-    beta_list = np.arange(1.5, 4.6, 0.1)
-    tau_list = np.arange(0.10, 0.31, 0.01)
+    beta_list = np.array([2.5])
+    tau_list = np.arange(0.15, 0.26, 0.01)
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     p_mesh = np.hstack([beta_mesh.flatten()[:, None], tau_mesh.flatten()[:, None]])
 
@@ -133,8 +143,8 @@ def main(args):
     # create the dataset containing the train and validation regimes
     data_config = {
         "dt": 1e-1,
-        "t_washout_len": 4,
-        "t_train_len": 40,
+        "t_washout_len": 8,
+        "t_train_len": 256,
         "grid_upsample": 4,
         "train_var": "gal",
     }
@@ -146,7 +156,7 @@ def main(args):
         Y_train,
         t_train,
         U_data,
-    ) = create_dataset(p_train_val_list, **data_config)
+    ) = create_dataset(p_train_val_list, **data_config, p_var="tau")
     train_idx_list = np.arange(args.n_train)
     if args.validate_on_train:
         val_idx_list = np.arange(0, args.n_train + args.n_val)
@@ -163,12 +173,10 @@ def main(args):
         "input_scaling",
         #'leak_factor',
         "parameter_normalization_mean",
-        "parameter_normalization_mean",
-        "parameter_normalization_var",
         "parameter_normalization_var",
     ]
 
-    hyp_param_scales = ["uniform", "log10", "uniform", "uniform", "log10", "log10"]
+    hyp_param_scales = ["uniform", "log10", "uniform", "log10"]
 
     # range for hyperparameters (spectral radius and input scaling)
     spec_in = 0.1
@@ -177,22 +185,22 @@ def main(args):
     in_scal_end = np.log10(10.0)
     leak_in = 0.1
     leak_end = 1.0
-    p_norm_mean_in = 0.0
-    p_norm_mean_end = 1.0
-    p_norm_var_in = np.log10(0.01)
-    p_norm_var_end = np.log10(2.0)
+    p_norm_mean_in = -0.4
+    p_norm_mean_end = 0.4
+    p_norm_var_in = np.log10(0.1)
+    p_norm_var_end = np.log10(10.0)
     grid_range = [
         [spec_in, spec_end],
         [in_scal_in, in_scal_end],
         # [leak_in, leak_end],
         [p_norm_mean_in, p_norm_mean_end],
-        [p_norm_mean_in, p_norm_mean_end],
+        # [p_norm_mean_in, p_norm_mean_end],
         [p_norm_var_in, p_norm_var_end],
-        [p_norm_var_in, p_norm_var_end],
+        # [p_norm_var_in, p_norm_var_end],
     ]
 
-    n_grid = [4, 4, 4, 4, 4, 4]
-    N_washout = 40
+    n_grid = [4, 4, 4, 4]
+    N_washout = 80
     N_val = 640
     N_fwd = 80
     noise_std = 0
@@ -245,6 +253,7 @@ def main(args):
     }
 
     pp.pickle_file("src/results/validation_run.pickle", results)
+    return
 
 
 if __name__ == "__main__":
@@ -260,13 +269,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_train",
         type=int,
-        default=3,
+        default=4,
         help="number of training regimes",
     )
     parser.add_argument(
         "--n_val",
         type=int,
-        default=1,
+        default=2,
         help="number of validation regimes",
     )
     parser.add_argument(

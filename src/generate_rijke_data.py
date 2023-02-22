@@ -68,7 +68,7 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.arange(1.5, 4.6, 0.1)
+    beta_list = np.array(1.5, 4.6, 0.1)
     tau_list = np.arange(0.10, 0.31, 0.01)
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
 
