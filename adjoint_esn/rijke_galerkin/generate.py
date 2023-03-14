@@ -22,22 +22,23 @@ def make_dir(path):
     if path.exists():
         raise FileExistsError(f"setup_directory() :: {path} already exists.")
     path.parent.mkdir(parents=True, exist_ok=True)
+    print(path.absolute())
 
 
 def write_h5(path, data):
     """Write simulation dictionary to a .h5 file"""
     hf = h5py.File(path, "w")  # with hf
-
+    print(path, flush=True)
     for k, v in data.items():
         hf.create_dataset(k, data=v)
-
+    print(path.absolute())
     hf.close()
 
 
 # @todo: rijke config, instead of passing everything in argparse
 def main(args):
     """Run the Rijke Galerkin solver"""
-    print("Initialising Rijke Galerkin solver.")
+    print("Initialising Rijke Galerkin solver.", flush=True)
 
     make_dir(args.data_path)
 
@@ -65,7 +66,7 @@ def main(args):
     # Temporal grid
     t = np.arange(0, args.simulation_time + args.dt, args.dt)
 
-    print("Running simulation.")
+    print("Running simulation.", flush=True)
     # Solve ODE using odeint
     y = odeint(rjk.ode, y0, t, tfirst=True)
 
@@ -127,10 +128,10 @@ def main(args):
         data_dict["P"] = P
         data_dict["U"] = U
 
-    print("Writing to file.")
+    print("Writing to file.", flush=True)
     write_h5(args.data_path, data_dict)
 
-    print("Done.")
+    print("Done.", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,22 @@
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
 # add the root directory to the path before importing from the library
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.append(root)
+import tempfile
+from datetime import datetime
+
+import wandb
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.validation import validate
 
 
+# os.environ["WANDB_SERVICE_WAIT"] = 300
 def load_data(
     data_path,
     dt=1e-1,
@@ -69,7 +75,7 @@ def create_dataset(
     t_train_len=256,
     grid_upsample=4,
     train_var="gal",
-    p_var="both",
+    p_var="all",
 ):
     len_p_list = len(p_list)
     U_washout_train = [None] * len_p_list
@@ -87,15 +93,18 @@ def create_dataset(
         beta_name = beta_name.replace(".", "_")
         tau_name = f"{tau:.2f}"
         tau_name = tau_name.replace(".", "_")
-        sim_str = f"src/data/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5"
+        sim_path = Path(f"src/data/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5")
+        print(sim_path.absolute(), flush=True)
         (
             U_washout_train[p_idx],
             U_train[p_idx],
             Y_train[p_idx],
             t_train[p_idx],
             U_data[p_idx],
-        ) = load_data(sim_str, dt, t_washout_len, t_train_len, grid_upsample, train_var)
-        if p_var == "both":
+        ) = load_data(
+            sim_path, dt, t_washout_len, t_train_len, grid_upsample, train_var
+        )
+        if p_var == "all":
             train_param_var = params
         elif p_var == "beta":
             train_param_var = beta
@@ -123,29 +132,40 @@ def input_norm_and_bias(U):
 
 def main(args):
     # mesh to choose training data from
-    beta_list = np.array([2.5])
-    tau_list = np.arange(0.15, 0.26, 0.01)
+    if args.p_var == "all":
+        beta_list = np.arange(1.2, 2.9, 0.1)
+        tau_list = np.arange(0.12, 0.29, 0.01)
+    elif args.p_var == "beta":
+        beta_list = np.arange(1.2, 2.9, 0.1)
+        tau_list = np.array([0.2])
+    elif args.p_var == "tau":
+        beta_list = np.array([2.5])
+        tau_list = np.arange(0.12, 0.29, 0.01)
+
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     p_mesh = np.hstack([beta_mesh.flatten()[:, None], tau_mesh.flatten()[:, None]])
 
     # randomly choose the training and validation regimes
     if args.n_train + args.n_val <= len(p_mesh):
-        rnd = np.random.RandomState(seed=args.seed)
-        train_val_idx_list = rnd.choice(
-            len(p_mesh), size=args.n_train + args.n_val, replace=False
-        )
+        if args.selection == ["random"]:
+            rnd = np.random.RandomState(seed=args.seed)
+            train_val_idx_list = rnd.choice(
+                len(p_mesh), size=args.n_train + args.n_val, replace=False
+            )
+        else:
+            train_val_idx_list = np.array([*map(int, args.selection)])
         p_train_val_list = p_mesh[train_val_idx_list, :]
     else:
         raise ValueError(
             "The number of training and validation regimes is greater than the mesh."
         )
-
+    print("Creating dataset.", flush=True)
     # create the dataset containing the train and validation regimes
     data_config = {
         "dt": 1e-1,
         "t_washout_len": 8,
         "t_train_len": 256,
-        "grid_upsample": 4,
+        "grid_upsample": 0,
         "train_var": "gal",
     }
     (
@@ -154,79 +174,92 @@ def main(args):
         U_train,
         P_train,
         Y_train,
-        t_train,
+        _,
         U_data,
-    ) = create_dataset(p_train_val_list, **data_config, p_var="tau")
+    ) = create_dataset(p_train_val_list, **data_config, p_var=args.p_var)
     train_idx_list = np.arange(args.n_train)
     if args.validate_on_train:
         val_idx_list = np.arange(0, args.n_train + args.n_val)
     else:
         val_idx_list = np.arange(args.n_train, args.n_train + args.n_val)
-
+    print("Train indices: ", train_idx_list)
+    print("Validation indices: ", val_idx_list)
     input_scale, input_bias = input_norm_and_bias(U_data)
     dim = U_train[0].shape[1]
-
+    print("Creating hyperparameter search range.", flush=True)
     # In case we want to start from a grid_search,
+    n_param = P_train[0].shape[1]
     # the first n_grid_x*n_grid_y points are from grid search
     hyp_param_names = [
         "spectral_radius",
         "input_scaling",
         #'leak_factor',
-        "parameter_normalization_mean",
-        "parameter_normalization_var",
     ]
+    hyp_param_names.extend(["parameter_normalization_mean"] * n_param)
+    hyp_param_names.extend(["parameter_normalization_var"] * n_param)
 
-    hyp_param_scales = ["uniform", "log10", "uniform", "log10"]
+    hyp_param_scales = [
+        "uniform",
+        "log10",
+        # "uniform",
+    ]
+    hyp_param_scales.extend(["uniform"] * n_param)
+    hyp_param_scales.extend(["log10"] * n_param)
 
     # range for hyperparameters (spectral radius and input scaling)
-    spec_in = 0.1
-    spec_end = 1.0
-    in_scal_in = np.log10(0.1)
-    in_scal_end = np.log10(10.0)
+    spec_in = 0.05
+    spec_end = 0.25
+    in_scal_in = np.log10(2.0)  # std of 0.5
+    in_scal_end = np.log10(20.0)  # std of 0.05
     leak_in = 0.1
     leak_end = 1.0
-    p_norm_mean_in = -0.4
-    p_norm_mean_end = 0.4
-    p_norm_var_in = np.log10(0.1)
-    p_norm_var_end = np.log10(10.0)
+    p_mean = np.mean(np.vstack(P_train), axis=0)
+    p_std = np.std(np.vstack(P_train), axis=0)
+    p_norm_mean_in = 0.0 * p_mean
+    p_norm_mean_end = 5.0 * p_mean
+    p_norm_mean = np.array([p_norm_mean_in, p_norm_mean_end]).T
+    p_norm_var_in = np.log10(0.2 * p_std)  # std of 5
+    p_norm_var_end = np.log10(40.0 * p_std)  # std of 0.025
+    p_norm_var = np.array([p_norm_var_in, p_norm_var_end]).T
     grid_range = [
         [spec_in, spec_end],
         [in_scal_in, in_scal_end],
         # [leak_in, leak_end],
-        [p_norm_mean_in, p_norm_mean_end],
-        # [p_norm_mean_in, p_norm_mean_end],
-        [p_norm_var_in, p_norm_var_end],
-        # [p_norm_var_in, p_norm_var_end],
     ]
-
-    n_grid = [4, 4, 4, 4]
-    N_washout = 80
-    N_val = 640
-    N_fwd = 80
-    noise_std = 0
+    grid_range.extend(p_norm_mean.tolist())
+    grid_range.extend(p_norm_var.tolist())
+    n_grid = [5] * len(grid_range)
+    N_washout = int(np.round(data_config["t_washout_len"] / data_config["dt"]))
+    t_val_len = 64
+    N_val = int(np.round(t_val_len / data_config["dt"]))
+    N_fwd = int(np.round(2 * data_config["t_washout_len"] / data_config["dt"]))
+    noise_std = args.noise_std
+    n_folds = 1
     ESN_dict = {
-        "reservoir_size": 1000,
+        # "spectral_radius":0.1,
+        "reservoir_size": args.reservoir_size,
         "dimension": dim,
-        "parameter_dimension": 1,
-        "reservoir_connectivity": 3,
+        "parameter_dimension": n_param,
+        "reservoir_connectivity": args.connectivity,
         "input_normalization": input_scale,
         "input_bias": input_bias,
     }
+    print("Starting validation.", flush=True)
     min_dict = validate(
         n_grid,
         grid_range,
         hyp_param_names,
         hyp_param_scales,
-        n_bo=4,
+        n_bo=20,
         n_initial=0,
-        n_ensemble=3,
+        n_ensemble=args.n_ensemble,
         ESN_dict=ESN_dict,
         U_washout=U_washout_train,
         U=U_train,
         Y=Y_train,
         P_washout=P_washout_train,
         P=P_train,
-        n_folds=1,
+        n_folds=n_folds,
         N_init_steps=N_washout,
         N_fwd_steps=N_fwd,
         N_washout_steps=N_washout,
@@ -248,11 +281,69 @@ def main(args):
         "N_washout": N_washout,
         "N_val": N_val,
         "N_fwd": N_fwd,
+        "n_folds": n_folds,
         "noise_std": noise_std,
         "min_dict": min_dict,
     }
+    # datetime object containing current date and time
+    now = datetime.now()
+    dt_string = now.strftime("%Y%m%d%H%M%S")
+    save_path = Path(f"src/results/val_run_{dt_string}.pickle")
+    print(save_path, flush=True)
+    pp.pickle_file(str(save_path.absolute()), results)
 
-    pp.pickle_file("src/results/validation_run.pickle", results)
+    # upload on weights and biases
+    if args.wandb_project is not None:
+        for e_idx in range(args.n_ensemble):
+            hyp_param_dict = {}
+            for hyp_param_name in set(hyp_param_names):
+                # get the unique strings in the list with set
+                # now the indices of the parameters with that name
+                # (because ESN has attributes that are set as arrays and not single scalars)
+                hyp_param_idx_list = np.where(
+                    np.array(hyp_param_names) == hyp_param_name
+                )[0]
+                new_hyp_param = np.zeros(len(hyp_param_idx_list))
+                for new_hyp_idx in range(len(hyp_param_idx_list)):
+                    hyp_param_idx = hyp_param_idx_list[new_hyp_idx]
+                    new_hyp_param[new_hyp_idx] = min_dict["params"][
+                        e_idx, hyp_param_idx
+                    ]
+                if len(hyp_param_idx_list) == 1:
+                    new_hyp_param = new_hyp_param[0]
+                hyp_param_dict[hyp_param_name] = new_hyp_param
+
+            cfg_dict = {
+                **data_config,
+                "p_train": p_train_val_list[train_idx_list],
+                "p_val": p_train_val_list[val_idx_list],
+                **ESN_dict,
+                **hyp_param_dict,
+                "tikh": min_dict["tikh"][e_idx],
+                "input_seeds": min_dict["input_seeds"][e_idx],
+                "reservoir_seeds": min_dict["reservoir_seeds"][e_idx],
+                "N_washout": N_washout,
+                "N_val": N_val,
+                "N_fwd": N_fwd,
+                "n_folds": n_folds,
+                "noise_std": noise_std,
+                "run_name": str(save_path),
+            }
+            my_wandb_run = wandb.init(
+                config=cfg_dict,
+                entity=args.wandb_entity,
+                project=args.wandb_project,
+                group=args.wandb_group,
+                reinit=True,
+                dir=args.tmp_dir,
+                mode="offline",
+            )
+            my_wandb_run.log(
+                {
+                    "val_score": min_dict["f"][e_idx],
+                }
+            )
+            my_wandb_run.finish()
     return
 
 
@@ -267,24 +358,59 @@ if __name__ == "__main__":
         help="seed to choose training data from the mesh",
     )
     parser.add_argument(
+        "--p_var",
+        type=str,
+        default="all",
+        help="which parameters to include",
+    )
+    parser.add_argument(
         "--n_train",
         type=int,
-        default=4,
+        default=2,
         help="number of training regimes",
     )
     parser.add_argument(
         "--n_val",
         type=int,
-        default=2,
+        default=1,
         help="number of validation regimes",
     )
+    parser.add_argument("--selection", nargs="+", default="random")
     parser.add_argument(
         "--validate_on_train",
-        type=bool,
-        default=True,
+        default=False,
+        action="store_true",
         help="whether to use the training regimes in validation",
     )
-
+    parser.add_argument(
+        "--reservoir_size",
+        type=int,
+        default=300,
+        help="size of the ESN reservoir",
+    )
+    parser.add_argument(
+        "--connectivity",
+        type=int,
+        default=3,
+        help="connectivity of the ESN reservoir",
+    )
+    parser.add_argument(
+        "--n_ensemble",
+        type=int,
+        default=1,
+        help="number of ESNs in ensemble",
+    )
+    parser.add_argument(
+        "--noise_std",
+        type=float,
+        default=0,
+        help="percentage noise level",
+    )
+    # arguments for weights and biases
+    parser.add_argument("--wandb-entity", default=None, type=str)
+    parser.add_argument("--wandb-project", default=None, type=str)
+    parser.add_argument("--wandb-group", default=None, type=str)
+    parser.add_argument("--tmp_dir", default=None, type=Path)
     parsed_args = parser.parse_args()
 
     main(parsed_args)

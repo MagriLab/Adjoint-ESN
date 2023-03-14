@@ -577,6 +577,9 @@ class ESN:
     #    jacobian =  np.matmul(diag_mat,const_jac_a) + np.matmul(diag_mat,const_jac_b)
     #    return jacobian
 
+    # @TODO: these properties are fixed once they are set,
+    # meaning even if the ESN is retrained, their values don't change
+    # leads to wrong Jacobian being used for calculations
     @property
     def dfdu_const(self):
         if not hasattr(self, "_dfdu_const"):
@@ -594,7 +597,8 @@ class ESN:
     @property
     def dfdu_dudr_const(self):
         if not hasattr(self, "_dfdu_dudr_const"):
-            self._dfdu_dudr_const = csr_matrix(self.dfdu_const.dot(self.dudr))
+            # self._dfdu_dudr_const = csr_matrix(self.dfdu_const.dot(self.dudr))
+            self._dfdu_dudr_const = self.dfdu_const.dot(self.dudr)
         return self._dfdu_dudr_const
 
     @property
@@ -617,9 +621,10 @@ class ESN:
         """
         dtanh = 1.0 - x**2
         dtanh = dtanh[:, None]
-        dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
+        # dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
+        dfdr_u = np.multiply(self.dfdu_dudr_const, dtanh)
         dfdr_r = self.dfdr_r_const + self.W.multiply(dtanh)
-        dfdr = dfdr_r + dfdr_u
+        dfdr = dfdr_r.toarray() + dfdr_u
         return dfdr
 
     @property

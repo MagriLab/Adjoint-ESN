@@ -50,7 +50,7 @@ def run_sim(params):
         "dx": None,
         "N_x": None,
         "dt": 1e-3,
-        "simulation_time": 4200,
+        "simulation_time": 1200,
         "transient_time": 200,
         "seed": None,
         "N_g": 10,
@@ -68,12 +68,13 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.array(1.5, 4.6, 0.1)
-    tau_list = np.arange(0.10, 0.31, 0.01)
-    beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
+    beta_list = np.arange(1.2, 2.9, 0.1)
+    tau_list = np.arange(0.21, 0.29, 0.01)
 
+    beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
+    print(mp.cpu_count())
     # multiprocessing
-    pool = mp.Pool(mp.cpu_count())
+    pool = mp.Pool(8)
     pool.map_async(
         run_sim,
         [(beta, tau) for (beta, tau) in zip(beta_mesh.flatten(), tau_mesh.flatten())],

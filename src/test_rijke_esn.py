@@ -26,7 +26,6 @@ def set_ESN(my_ESN, param_names, params):
 
         new_param = np.zeros(len(param_idx_list))
         for new_idx in range(len(param_idx_list)):
-            # rescale the parameters according to the given scaling
             param_idx = param_idx_list[new_idx]
             new_param[new_idx] = params[param_idx]
 
@@ -37,15 +36,32 @@ def set_ESN(my_ESN, param_names, params):
     return
 
 
+def L2_error(y, y_pred):
+    return np.linalg.norm(y - y_pred, "fro")
+
+
 def main(args):
-    # Mesh
-    beta_list = np.array([2.5])
-    tau_list = np.arange(0.15, 0.26, 0.01)
+    # mesh to choose test data from
+    if args.p_var == "all":
+        beta_list = np.arange(1.2, 2.9, 0.1)
+        tau_list = np.arange(0.12, 0.29, 0.01)
+    elif args.p_var == "beta":
+        beta_list = np.arange(1.2, 3.1, 0.1)
+        tau_list = np.array([0.2])
+    elif args.p_var == "tau":
+        beta_list = np.array([2.5])
+        tau_list = np.arange(0.12, 0.29, 0.01)
+
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     p_mesh = np.hstack([beta_mesh.flatten()[:, None], tau_mesh.flatten()[:, None]])
 
     # load the pickled results from the hyperparameter search
     hyp_results, hyp_file = pp.unpickle_file(args.hyp_file_name)
+
+    # create path to put in the results plot
+    results_path = f"src/results/{args.hyp_file_name.stem}/"
+    results_path = Path(results_path)
+    results_path.mkdir(parents=True, exist_ok=True)
 
     # create the same training set as the validation
     (
@@ -57,7 +73,9 @@ def main(args):
         t_train,
         _,
     ) = create_dataset(
-        hyp_results["p_train_val_list"], **hyp_results["data_config"], p_var="tau"
+        hyp_results["p_train_val_list"],
+        **hyp_results["data_config"],
+        p_var=args.p_var,
     )
 
     # create test set from different parameters in the mesh
@@ -83,7 +101,7 @@ def main(args):
         Y_test,
         t_test,
         _,
-    ) = create_dataset(p_test_list, **hyp_results["data_config"], p_var="tau")
+    ) = create_dataset(p_test_list, **hyp_results["data_config"], p_var=args.p_var)
 
     # add noise to the data
     len_p_list = len(hyp_results["p_train_val_list"])
@@ -106,9 +124,11 @@ def main(args):
     n_ensemble = len(hyp_results["min_dict"]["f"])
     ESN_ensemble = [None] * n_ensemble
 
-    plt_idx = [0]
-
+    plt_idx = [0, 1]
+    plt_len = 32
+    N_plt_len = int(np.round(plt_len / hyp_results["data_config"]["dt"]))
     for e_idx in range(n_ensemble):
+        print(f"Predicting using {e_idx+1}/{n_ensemble}.")
         # initialize a base ESN object
         ESN_ensemble[e_idx] = ESN(
             **hyp_results["ESN_dict"],
@@ -137,6 +157,9 @@ def main(args):
 
         # plot prediction of train
         Y_pred_train = [None] * len_p_list
+        fig_train = plt.figure(
+            figsize=(len(plt_idx) * 8, len_p_list * 4), constrained_layout=True
+        )
         for p_idx in range(len_p_list):
             _, Y_pred_train_ = ESN_ensemble[e_idx].closed_loop_with_washout(
                 U_washout=U_washout_train[p_idx],
@@ -145,19 +168,30 @@ def main(args):
                 P=P_train[p_idx],
             )
             Y_pred_train[p_idx] = Y_pred_train_[1:, :]
-            fig = plt.figure(figsize=(8, 2))
+            train_error = L2_error(Y_train[p_idx], Y_pred_train[p_idx])
+            print(
+                f"Train error for parameter {hyp_results['p_train_val_list'][p_idx]}: ",
+                train_error,
+                flush=True,
+            )
             for j in plt_idx:
-                plt.plot(t_train[p_idx], Y_train[p_idx][:, j])
-                plt.plot(t_train[p_idx], Y_pred_train[p_idx][:, j], "--")
+                plt.subplot(len_p_list, len(plt_idx), p_idx * len(plt_idx) + j + 1)
+                plt.plot(t_train[p_idx][:N_plt_len], Y_train[p_idx][:N_plt_len, j])
+                plt.plot(
+                    t_train[p_idx][:N_plt_len], Y_pred_train[p_idx][:N_plt_len, j], "--"
+                )
                 plt.title(f"Train & Val p = {hyp_results['p_train_val_list'][p_idx]}")
                 plt.xlabel("t")
                 plt.ylabel(f"q_{j}")
                 plt.legend(["True", "ESN"])
-            fig.savefig(f"src/results/train_val_ESN_{e_idx}_p_{p_idx}.png")
-            plt.close()
+        fig_train.savefig(results_path / f"train_val_ESN_{e_idx}.png")
+        plt.close()
 
         # plot prediction of test
         Y_pred_test = [None] * len_p_test_list
+        fig_test = plt.figure(
+            figsize=(len(plt_idx) * 8, len_p_test_list * 4), constrained_layout=True
+        )
         for p_idx in range(len_p_test_list):
             _, Y_pred_test_ = ESN_ensemble[e_idx].closed_loop_with_washout(
                 U_washout=U_washout_test[p_idx],
@@ -166,16 +200,24 @@ def main(args):
                 P=P_test[p_idx],
             )
             Y_pred_test[p_idx] = Y_pred_test_[1:, :]
-            fig = plt.figure(figsize=(8, 2))
+            test_error = L2_error(Y_test[p_idx], Y_pred_test[p_idx])
+            print(
+                f"Test error for parameter {p_test_list[p_idx]}: ",
+                test_error,
+                flush=True,
+            )
             for j in plt_idx:
-                plt.plot(t_test[p_idx], Y_test[p_idx][:, j])
-                plt.plot(t_test[p_idx], Y_pred_test[p_idx][:, j], "--")
+                plt.subplot(len_p_test_list, len(plt_idx), p_idx * len(plt_idx) + j + 1)
+                plt.plot(t_test[p_idx][:N_plt_len], Y_test[p_idx][:N_plt_len, j])
+                plt.plot(
+                    t_test[p_idx][:N_plt_len], Y_pred_test[p_idx][:N_plt_len, j], "--"
+                )
                 plt.title(f"Test p = {p_test_list[p_idx]}")
                 plt.xlabel("t")
                 plt.ylabel(f"q_{j}")
                 plt.legend(["True", "ESN"])
-            fig.savefig(f"src/results/test_ESN_{e_idx}_p_{p_idx}.png")
-            plt.close()
+        fig_test.savefig(results_path / f"test_ESN_{e_idx}.png")
+        plt.close()
 
     hyp_file.close()
     return
@@ -186,8 +228,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hyp_file_name",
         type=Path,
-        default="src/results/validation_run.pickle",
+        default="Adjoint-ESN/src/results/validation_run.pickle",
         help="file that contains the results of the hyperparameter search",
+    )
+    parser.add_argument(
+        "--p_var",
+        type=str,
+        default="all",
+        help="which parameters to include",
     )
     parser.add_argument(
         "--n_test",
