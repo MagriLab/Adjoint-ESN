@@ -46,11 +46,14 @@ def main(args):
         beta_list = np.arange(1.2, 2.9, 0.1)
         tau_list = np.arange(0.12, 0.29, 0.01)
     elif args.p_var == "beta":
-        beta_list = np.arange(1.2, 3.1, 0.1)
+        # beta_list = np.arange(1.2, 3.1, 0.1)
+        beta_list = np.arange(0.3, 1.0, 0.1)
+        # beta_list = np.array([3.5,4.0,5.0,5.7])
         tau_list = np.array([0.2])
     elif args.p_var == "tau":
         beta_list = np.array([2.5])
-        tau_list = np.arange(0.12, 0.29, 0.01)
+        # tau_list = np.arange(0.12, 0.29, 0.01)
+        tau_list = np.arange(0.04, 0.1, 0.01)
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     p_mesh = np.hstack([beta_mesh.flatten()[:, None], tau_mesh.flatten()[:, None]])
@@ -63,6 +66,24 @@ def main(args):
     results_path = Path(results_path)
     results_path.mkdir(parents=True, exist_ok=True)
 
+    # find out which variables were used for training in order to recreate the dataset
+    if "input_var" in hyp_results["data_config"]:
+        input_var = hyp_results["data_config"]["input_var"]
+    elif (
+        "train_var" in hyp_results["data_config"]
+    ):  # old validation logs will have this tag
+        # adding this bit so we can still handle the old logs
+        if hyp_results["data_config"]["train_var"] == "gal":
+            # Assumes we used 10 Galerkin modes!!
+            if hyp_results["ESN_dict"]["dimension"] == 20:
+                input_var = "eta_mu"
+            elif hyp_results["ESN_dict"]["dimension"] == 30:
+                input_var = "eta_mu_v"
+        else:
+            raise ValueError(
+                "Can't find the gradient from other input variables than the Galerkin variables!"
+            )
+
     # create the same training set as the validation
     (
         U_washout_train,
@@ -73,25 +94,30 @@ def main(args):
         t_train,
         _,
     ) = create_dataset(
-        hyp_results["p_train_val_list"],
-        **hyp_results["data_config"],
+        p_list=hyp_results["p_train_val_list"],
+        dt=hyp_results["data_config"]["dt"],
+        t_washout_len=hyp_results["data_config"]["t_washout_len"],
+        t_train_len=hyp_results["data_config"]["t_train_len"],
+        grid_upsample=hyp_results["data_config"]["grid_upsample"],
+        input_var=input_var,
         p_var=args.p_var,
     )
 
     # create test set from different parameters in the mesh
-    p_valid_test = []
-    for p in p_mesh:
-        matched_p = False
-        for p_train in hyp_results["p_train_val_list"]:
-            if all(p == p_train):
-                matched_p = True
-        if matched_p == False:
-            p_valid_test.append(p)
-    p_valid_test = np.array(p_valid_test)
-
-    rnd = np.random.RandomState(seed=10)
-    test_idx_list = rnd.choice(len(p_valid_test), size=args.n_test, replace=False)
-    p_test_list = p_valid_test[test_idx_list, :]
+    # p_valid_test = []
+    # for p in p_mesh:
+    #    matched_p = False
+    #    for p_train in hyp_results["p_train_val_list"]:
+    #        if all(p == p_train):
+    #            matched_p = True
+    #    if matched_p == False:
+    #        p_valid_test.append(p)
+    # p_valid_test = np.array(p_valid_test)
+    #
+    # rnd = np.random.RandomState(seed=10)
+    # test_idx_list = rnd.choice(len(p_valid_test), size=args.n_test, replace=False)
+    # p_test_list = p_valid_test[test_idx_list, :]
+    p_test_list = p_mesh
 
     (
         U_washout_test,
@@ -101,7 +127,15 @@ def main(args):
         Y_test,
         t_test,
         _,
-    ) = create_dataset(p_test_list, **hyp_results["data_config"], p_var=args.p_var)
+    ) = create_dataset(
+        p_list=p_test_list,
+        dt=hyp_results["data_config"]["dt"],
+        t_washout_len=hyp_results["data_config"]["t_washout_len"],
+        t_train_len=hyp_results["data_config"]["t_train_len"],
+        grid_upsample=hyp_results["data_config"]["grid_upsample"],
+        input_var=input_var,
+        p_var=args.p_var,
+    )
 
     # add noise to the data
     len_p_list = len(hyp_results["p_train_val_list"])
@@ -125,7 +159,7 @@ def main(args):
     ESN_ensemble = [None] * n_ensemble
 
     plt_idx = [0, 1]
-    plt_len = 32
+    plt_len = 200
     N_plt_len = int(np.round(plt_len / hyp_results["data_config"]["dt"]))
     for e_idx in range(n_ensemble):
         print(f"Predicting using {e_idx+1}/{n_ensemble}.")
@@ -184,7 +218,7 @@ def main(args):
                 plt.xlabel("t")
                 plt.ylabel(f"q_{j}")
                 plt.legend(["True", "ESN"])
-        fig_train.savefig(results_path / f"train_val_ESN_{e_idx}.png")
+        fig_train.savefig(results_path / f"train_val_ESN_{e_idx}_long.png")
         plt.close()
 
         # plot prediction of test
@@ -216,7 +250,7 @@ def main(args):
                 plt.xlabel("t")
                 plt.ylabel(f"q_{j}")
                 plt.legend(["True", "ESN"])
-        fig_test.savefig(results_path / f"test_ESN_{e_idx}.png")
+        fig_test.savefig(results_path / f"test_ESN_{e_idx}_long.png")
         plt.close()
 
     hyp_file.close()

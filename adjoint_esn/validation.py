@@ -69,8 +69,8 @@ def run_gp_optimization(
         n_random_starts=n_initial,  # the number of additional random initialization points
         n_restarts_optimizer=3,  # number of tries for each acquisition
         random_state=10,  # seed
-        acq_optimizer="lbfgs",
-        n_jobs=-1,  # number of cores to use
+        # acq_optimizer="lbfgs",
+        # n_jobs=-1,  # number of cores to use
     )
     return res
 
@@ -112,6 +112,7 @@ def RVC(
     N_fwd_steps,
     N_washout_steps,
     N_val_steps,
+    N_transient_steps=0,
     tikh_hist=None,
     print_flag=False,
     P_washout=None,
@@ -132,7 +133,7 @@ def RVC(
     if isinstance(U, list):
         if train_idx_list is None:
             train_idx_list = range(len(U))
-        X_augmented = np.empty((0, my_ESN.N_reservoir + 1))
+        X_augmented = np.empty((0, my_ESN.W_out_shape[0]))
         for train_idx in train_idx_list:
             # add noise
             data_std = np.std(U[train_idx], axis=0)
@@ -160,7 +161,7 @@ def RVC(
     # since the input data will be the same,
     # we don't rerun the open loop multiple times just to train
     # with different tikhonov coefficients
-    tikh_list = [1e-3, 1e-2, 1e-1, 1, 10]
+    tikh_list = [1e-8, 1e-7, 1e-6]
     W_out_list = [None] * len(tikh_list)
     for tikh_idx, tikh in enumerate(tikh_list):
         W_out_list[tikh_idx] = my_ESN.solve_ridge(X_augmented, Y, tikh)
@@ -174,7 +175,9 @@ def RVC(
         for val_idx in val_idx_list:
             # validate with different folds
             mse_sum = np.zeros(len(tikh_list))
+            print("Val idx:", val_idx)
             for fold in range(n_folds):
+                print("Fold:", fold)
                 # select washout and validation
                 N_steps = N_init_steps + fold * N_fwd_steps
                 U_washout_fold = U[val_idx][N_steps : N_washout_steps + N_steps].copy()
@@ -194,8 +197,8 @@ def RVC(
                     + N_val_steps
                 ].copy()
                 # run washout before closed loop
-                x0_fold = my_ESN.run_washout(U_washout_fold, P_washout_fold)
 
+                x0_fold = my_ESN.run_washout(U_washout_fold, P_washout_fold)
                 for tikh_idx in range(len(tikh_list)):
                     # set the output weights
                     my_ESN.output_weights = W_out_list[tikh_idx]
@@ -205,13 +208,23 @@ def RVC(
                     Y_val_pred = Y_val_pred[1:, :]
 
                     # add the mse error with this tikh in log10 scale
-                    mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
-
+                    error = np.log10(
+                        np.mean(
+                            (
+                                Y_val[N_transient_steps:, :]
+                                - Y_val_pred[N_transient_steps:, :]
+                            )
+                            ** 2
+                        )
+                    )
+                    mse_sum[tikh_idx] += error
+                    print("Parameters", params, "Tikh", tikh_list[tikh_idx], "f", error)
             # find the mean mse over folds
             mse_mean += mse_sum / n_folds
-
+            print(mse_mean)
         # find mean mse over different trajectories
         mse_mean = mse_mean / len(val_idx_list)
+        print(mse_mean)
     else:
         mse_sum = np.zeros(len(tikh_list))
         for fold in range(n_folds):
@@ -234,7 +247,15 @@ def RVC(
                 Y_val_pred = Y_val_pred[1:, :]
 
                 # add the mse error with this tikh in log10 scale
-                mse_sum[tikh_idx] += np.log10(np.mean((Y_val - Y_val_pred) ** 2))
+                mse_sum[tikh_idx] += np.log10(
+                    np.mean(
+                        (
+                            Y_val[N_transient_steps:, :]
+                            - Y_val_pred[N_transient_steps:, :]
+                        )
+                        ** 2
+                    )
+                )
 
         # find the mean mse over folds
         mse_mean = mse_sum / n_folds
@@ -275,6 +296,7 @@ def validate(
     N_fwd_steps,
     N_washout_steps,
     N_val_steps,
+    N_transient_steps,
     train_idx_list,
     val_idx_list,
     noise_std,
@@ -338,6 +360,7 @@ def validate(
             N_fwd_steps=N_fwd_steps,
             N_washout_steps=N_washout_steps,
             N_val_steps=N_val_steps,
+            N_transient_steps=N_transient_steps,
             tikh_hist=tikh_hist,
             P_washout=P_washout,
             P=P,

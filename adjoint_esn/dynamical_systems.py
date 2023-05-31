@@ -132,3 +132,37 @@ class VanDerPol:
 
         dudt = np.array([dx1dt, dx2dt])
         return dudt
+
+
+class MultiStable:
+    def __init__(self, alpha, beta, epsilon, k, t_lyap=None):
+        """Create a coupled Roessler-Lorenz system instance with the given parameters"""
+        self.alpha = alpha
+        self.beta = beta
+        self.epsilon = epsilon
+        self.k = k
+        self.N_dim = 4
+
+    @property
+    def params(self):
+        """Returns a dictionary containing only the system parameters"""
+        return {
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "epsilon": self.epsilon,
+            "k": self.k,
+        }
+
+    def ode(self, q, t):
+        """Multistable system ode from Roy 2022
+        t: time
+        q: state vector, contains x, y, z, u
+        """
+        x, y, z, u = q
+        dxdt = y
+        dydt = z
+        dzdt = -y + 3 * y**2 - x**2 - x * z + self.alpha + self.epsilon * u
+        dudt = -self.k * u - self.epsilon * (z - self.beta)
+
+        dudt = np.array([dxdt, dydt, dzdt, dudt])
+        return dudt

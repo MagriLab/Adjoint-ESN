@@ -16,10 +16,12 @@ class ESN:
         input_scaling=1.0,
         spectral_radius=1.0,
         leak_factor=1.0,
-        input_bias=1.0,
-        input_seeds=[0, 1, 10],
-        reservoir_seeds=[2, 3],
+        input_bias=np.array([]),
+        output_bias=np.array([1.0]),
+        input_seeds=[None, None, None],
+        reservoir_seeds=[None, None],
         verbose=True,
+        r2_mode=False,
     ):
         """Creates an Echo State Network with the given parameters
         Args:
@@ -44,6 +46,7 @@ class ESN:
 
         """
         self.verbose = verbose
+        self.r2_mode = r2_mode
         ## Hyperparameters
         # these should be fixed during initialization and not changed since they affect
         # the matrix dimensions, and the matrices can become incompatible
@@ -55,6 +58,10 @@ class ESN:
 
         self.leak_factor = leak_factor
 
+        ## Biases
+        self.input_bias = input_bias
+        self.output_bias = output_bias
+
         ## Input normalization
         self.input_normalization = input_normalization
         self.parameter_normalization = parameter_normalization
@@ -63,9 +70,13 @@ class ESN:
         # the object should also store the seeds for reproduction
         # initialise input weights
         self.W_in_seeds = input_seeds
-        self.W_in_shape = (self.N_reservoir, self.N_dim + 1 + self.N_param_dim)
-        # N_dim+1 because we augment the inputs with a bias
-        self.input_weights = self.generate_input_weights()
+        self.W_in_shape = (
+            self.N_reservoir,
+            self.N_dim + len(self.input_bias) + self.N_param_dim,
+        )
+        # N_dim+length of input bias because we augment the inputs with a bias
+        # if no bias, then this will be + 0
+        self.input_weights = self.generate_input_weights2()
         self.input_scaling = input_scaling
         # input weights are automatically scaled if input scaling is updated
 
@@ -77,13 +88,10 @@ class ESN:
         # reservoir weights are automatically scaled if spectral radius is updated
 
         # initialise output weights
-        self.W_out_shape = (self.N_reservoir + 1, self.N_dim)
-        # N_reservoir+1 because we augment the outputs with a bias
+        self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)
+        # N_reservoir+length of output bias because we augment the outputs with a bias
+        # if no bias, then this will be + 0
         self.output_weights = np.zeros(self.W_out_shape)
-
-        ## Biases
-        self.input_bias = input_bias
-        self.output_bias = np.array([1.0])
 
     @property
     def reservoir_connectivity(self):
@@ -304,10 +312,12 @@ class ESN:
 
         # make W_in
         for j in range(self.N_reservoir):
-            rnd_idx = rnd0.randint(0, self.N_dim + 1)
+            rnd_idx = rnd0.randint(0, self.W_in_shape[1] - self.N_param_dim)
             # only one element different from zero
             # sample from the uniform distribution
             W_in[j, rnd_idx] = rnd1.uniform(-1, 1)
+
+            # W_in[j,:self.W_in_shape[1]-self.N_param_dim] = rnd1.uniform(-1,1,(self.W_in_shape[1]-self.N_param_dim,))
 
         # input associated with system's bifurcation parameters are
         # fully connected to the reservoir states
@@ -318,6 +328,32 @@ class ESN:
 
         W_in = W_in.tocsr()
 
+        return W_in
+
+    def generate_input_weights2(self):
+        # initialize W_in with zeros
+        W_in = lil_matrix(self.W_in_shape)
+        rnd0 = np.random.RandomState(self.W_in_seeds[0])
+        rnd1 = np.random.RandomState(self.W_in_seeds[1])
+
+        for i in range(self.N_reservoir):
+            W_in[
+                i,
+                int(
+                    np.floor(
+                        i * (self.W_in_shape[1] - self.N_param_dim) / self.N_reservoir
+                    )
+                ),
+            ] = (
+                2 * rnd0.random() - 1
+            )
+
+        if self.N_param_dim > 0:
+            W_in[:, -self.N_param_dim :] = (
+                2 * rnd1.random((self.N_reservoir, self.N_param_dim)) - 1
+            )
+
+        W_in = W_in.tocsr()
         return W_in
 
     def generate_reservoir_weights(self):
@@ -359,6 +395,31 @@ class ESN:
 
         return W
 
+    def generate_reservoir_weights2(self):
+        prob = 1 - self.sparseness
+
+        # set the seeds
+        rnd0 = np.random.RandomState(self.W_seeds[0])  # connection rng
+        rnd1 = np.random.RandomState(self.W_seeds[1])  # sampling rng
+
+        # initialize with zeros
+        W = np.zeros(self.W_shape)
+        for i in range(self.N_reservoir):
+            for j in range(self.N_reservoir):
+                b = rnd0.random()
+                if (i != j) and (b < prob):
+                    W[i, j] = rnd1.random()
+
+        W = csr_matrix(W)
+
+        # find the spectral radius of the generated matrix
+        # this is the maximum absolute eigenvalue
+        rho_pre = np.abs(sparse_eigs(W, k=1, which="LM", return_eigenvectors=False))[0]
+
+        # first scale W by the spectral radius to get unitary spectral radius
+        W = (1 / rho_pre) * W
+        return W
+
     def step(self, x_prev, u, p=None):
         """Advances ESN time step.
         Args:
@@ -381,6 +442,9 @@ class ESN:
             u_augmented = np.hstack(
                 (u_augmented, (p - self.norm_p[0]) / self.norm_p[1])
             )
+            # u_augmented = np.hstack(
+            #    (u_augmented, ((p - self.norm_p[0]) / self.norm_p[1])**2)
+            # )
 
         # update the reservoir
         x_tilde = np.tanh(self.W_in.dot(u_augmented) + self.W.dot(x_prev))
@@ -406,15 +470,17 @@ class ESN:
 
         # initialise with the given initial reservoir states
         X[0, :] = x0
-
+        # X = [x0]
         # step in time
         for n in np.arange(1, N_t + 1):
             # update the reservoir
             if self.N_param_dim > 0:
                 X[n] = self.step(X[n - 1, :], U[n - 1, :], P[n - 1, :])
+                # X.append(self.step(X[n - 1], U[n - 1], P[n - 1]))
             else:
                 X[n] = self.step(X[n - 1, :], U[n - 1, :])
-
+                # X.append(self.step(X[n - 1], U[n - 1]))
+        # X = np.array(X)
         return X
 
     def closed_loop(self, x0, N_t, P=None):
@@ -430,7 +496,6 @@ class ESN:
         """
         # create an empty matrix to hold the reservoir states in time
         X = np.empty((N_t + 1, self.N_reservoir))
-
         # create an empty matrix to hold the output states in time
         Y = np.empty((N_t + 1, self.N_dim))
 
@@ -438,7 +503,13 @@ class ESN:
         X[0, :] = x0
 
         # augment the reservoir states with the bias
-        x0_augmented = np.hstack((x0, self.b_out))
+        if self.r2_mode:
+            x0_2 = x0.copy()
+            x0_2[1::2] = x0_2[1::2] ** 2
+            x0_augmented = np.hstack((x0_2, self.b_out))
+        else:
+            x0_augmented = np.hstack((x0, self.b_out))
+
         # initialise with the calculated output states
         Y[0, :] = np.dot(x0_augmented, self.W_out)
 
@@ -451,7 +522,14 @@ class ESN:
                 X[n, :] = self.step(X[n - 1, :], Y[n - 1, :])
 
             # augment the reservoir states with bias
-            x_augmented = np.hstack((X[n, :], self.b_out))
+            # replaces r with r^2 if even, r otherwise
+            if self.r2_mode:
+                X2 = X[n, :].copy()
+                X2[1::2] = X2[1::2] ** 2
+                x_augmented = np.hstack((X2, self.b_out))
+            else:
+                x_augmented = np.hstack((X[n, :], self.b_out))
+
             # update the output with the reservoir states
             Y[n, :] = np.dot(x_augmented, self.W_out)
         return X, Y
@@ -490,12 +568,15 @@ class ESN:
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
         reg = Ridge(alpha=tikh, fit_intercept=False)
-        # reg = Lasso(alpha=tikh, max_iter = 5000, fit_intercept=False)
-        # reg = ElasticNet(alpha=tikh, l1_ratio = 0.1, max_iter = 5000, fit_intercept=False)
+        # # reg = Lasso(alpha=tikh, max_iter = 5000, fit_intercept=False)
+        # # reg = ElasticNet(alpha=tikh, l1_ratio = 0.1, max_iter = 5000, fit_intercept=False)
         reg.fit(X, Y)
         W_out = (
             reg.coef_.T
         )  # we take the transpose because of how the closed loop is structured
+
+        # W_out = np.dot(np.dot(Y.T, X), np.linalg.inv((np.dot(X.T, X)+tikh*np.identity(self.N_reservoir))))
+        # W_out = W_out.T
         return W_out
 
     def reservoir_for_train(self, U_washout, U_train, P_washout=None, P_train=None):
@@ -506,7 +587,14 @@ class ESN:
 
         # augment with the bias
         N_t = X_train.shape[0]  # number of time steps
-        X_train_augmented = np.hstack((X_train, self.b_out * np.ones((N_t, 1))))
+
+        if self.r2_mode:
+            X_train2 = X_train.copy()
+            X_train2[:, 1::2] = X_train2[:, 1::2] ** 2
+            X_train_augmented = np.hstack((X_train2, self.b_out * np.ones((N_t, 1))))
+        else:
+            X_train_augmented = np.hstack((X_train, self.b_out * np.ones((N_t, 1))))
+
         return X_train_augmented
 
     def train(
@@ -534,7 +622,7 @@ class ESN:
         # get the training input
         # this is the reservoir states augmented with the bias after a washout phase
         if isinstance(U_train, list):
-            X_train_augmented = np.empty((0, self.N_reservoir + 1))
+            X_train_augmented = np.empty((0, self.W_out_shape[0]))
             if train_idx_list is None:
                 train_idx_list = range(len(U_train))
             for train_idx in train_idx_list:

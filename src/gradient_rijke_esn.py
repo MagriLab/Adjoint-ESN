@@ -37,7 +37,7 @@ def set_ESN(my_ESN, param_names, params):
     return
 
 
-def get_washout_and_true_grad(p_mesh, dt, t_washout_len, p_var):
+def get_washout_and_true_grad(p_mesh, dt, t_washout_len, input_var, p_var):
     len_p_mesh = len(p_mesh)
     U_washout = [None] * len_p_mesh
     P_washout = [None] * len_p_mesh
@@ -52,13 +52,16 @@ def get_washout_and_true_grad(p_mesh, dt, t_washout_len, p_var):
         beta_name = beta_name.replace(".", "_")
         tau_name = f"{tau:.2f}"
         tau_name = tau_name.replace(".", "_")
-        sim_path = Path(f"src/data/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5")
-        print(sim_path.absolute(), flush=True)
+        sim_path = Path(f"data_new/rijke_kings_poly_beta_{beta_name}_tau_{tau_name}.h5")
+        # print(sim_path.absolute(), flush=True)
         # load data
         data_dict = pp.read_h5(sim_path)
 
         # get the washout
-        U_sim = data_dict["y"][:, 0 : 2 * data_dict["N_g"]]
+        if input_var == "eta_mu":
+            U_sim = data_dict["y"][:, 0 : 2 * data_dict["N_g"]]
+        elif input_var == "eta_mu_v":
+            U_sim = data_dict["y"][:, 0 : 2 * data_dict["N_g"] + data_dict["N_c"]]
         # upsample
         data_dt = data_dict["t"][1] - data_dict["t"][0]
         upsample = pp.get_steps(dt, data_dt)
@@ -82,7 +85,7 @@ def get_washout_and_true_grad(p_mesh, dt, t_washout_len, p_var):
         P[p_idx] = train_param_var * np.ones((len(U[N_washout:]), 1))
 
         # get energy
-        J[p_idx] = 1 / 4 * np.mean(np.sum(U**2, axis=1))
+        J[p_idx] = 1 / 4 * np.mean(np.sum(U[:, : 2 * data_dict["N_g"]] ** 2, axis=1))
 
         # get the gradients
         dJ_dbeta[p_idx] = data_dict["dJ_dbeta"]
@@ -90,7 +93,8 @@ def get_washout_and_true_grad(p_mesh, dt, t_washout_len, p_var):
     return U_washout, P_washout, P, J, dJ_dbeta, dJ_dtau
 
 
-def run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P):
+# @TODO: adjoint formulation for only 2*N_g states
+def run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P, N_g):
     # OBJECTIVE SQUARED L2 OF OUTPUT STATES (ACOUSTIC ENERGY)
     X_pred_grad, Y_pred_grad = my_ESN.closed_loop_with_washout(
         U_washout, N_t - 1, P_washout, P
@@ -107,7 +111,8 @@ def run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P):
         * 1
         / 2
         * np.dot(
-            np.dot(X_pred_aug, my_ESN.W_out), my_ESN.W_out[: my_ESN.N_reservoir, :].T
+            np.dot(X_pred_aug, my_ESN.W_out[:, : 2 * N_g]),
+            my_ESN.W_out[: my_ESN.N_reservoir, : 2 * N_g].T,
         ).T
     )
     dJ_dp_adj = np.zeros(my_ESN.N_param_dim)
@@ -119,8 +124,8 @@ def run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P):
             * 1
             / 2
             * np.dot(
-                np.dot(X_pred_aug, my_ESN.W_out),
-                my_ESN.W_out[: my_ESN.N_reservoir, :].T,
+                np.dot(X_pred_aug, my_ESN.W_out[:, : 2 * N_g]),
+                my_ESN.W_out[: my_ESN.N_reservoir, : 2 * N_g].T,
             ).T
         )
         v = np.dot(my_ESN.jac(X_pred_grad[i, :]).T, v_prev) + dJ_dr
@@ -128,7 +133,7 @@ def run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P):
     return J, dJ_dp_adj
 
 
-def run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P):
+def run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P, N_g):
     # OBJECTIVE SQUARED L2 OF OUTPUT STATES (ACOUSTIC ENERGY)
     X_pred_grad, Y_pred_grad = my_ESN.closed_loop_with_washout(
         U_washout, N_t - 1, P_washout, P
@@ -137,7 +142,7 @@ def run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P):
     # calculate gradient for a timeseries, numerical method
     # time averaged objective
     h = 1e-5
-    J = 1 / 4 * np.mean(np.sum(Y_pred_grad**2, axis=1))
+    J = 1 / 4 * np.mean(np.sum(Y_pred_grad[:, : 2 * N_g] ** 2, axis=1))
 
     dJ_dp_num = np.zeros((my_ESN.N_param_dim))
     for i in range(my_ESN.N_param_dim):
@@ -145,10 +150,10 @@ def run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P):
         P_left[:, i] -= h
         P_right = P.copy()
         P_right[:, i] += h
-        X_left, Y_left = my_ESN.closed_loop(X_pred_grad[0, :], N_t - 1, P_left)
-        X_right, Y_right = my_ESN.closed_loop(X_pred_grad[0, :], N_t - 1, P_right)
-        J_left = 1 / 4 * np.mean(np.sum(Y_left**2, axis=1))
-        J_right = 1 / 4 * np.mean(np.sum(Y_right**2, axis=1))
+        _, Y_left = my_ESN.closed_loop(X_pred_grad[0, :], N_t - 1, P_left)
+        _, Y_right = my_ESN.closed_loop(X_pred_grad[0, :], N_t - 1, P_right)
+        J_left = 1 / 4 * np.mean(np.sum(Y_left[:, : 2 * N_g] ** 2, axis=1))
+        J_right = 1 / 4 * np.mean(np.sum(Y_right[:, : 2 * N_g] ** 2, axis=1))
         dJ_dp_num[i] = (J_right - J_left) / (2 * h)
     return J, dJ_dp_num
 
@@ -201,11 +206,13 @@ def main(args):
         beta_list = np.arange(1.2, 2.9, 0.1)
         tau_list = np.arange(0.12, 0.29, 0.01)
     elif args.p_var == "beta":
-        beta_list = np.arange(1.2, 2.9, 0.1)
+        beta_list = np.arange(0.3, 5.8, 0.1)
+        # beta_list = np.arange(1.2, 2.9, 0.1)
         tau_list = np.array([0.2])
     elif args.p_var == "tau":
         beta_list = np.array([2.5])
-        tau_list = np.arange(0.12, 0.29, 0.01)
+        # tau_list = np.arange(0.12, 0.29, 0.01)
+        tau_list = np.arange(0.05, 0.40, 0.01)
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     p_mesh = np.hstack([beta_mesh.flatten()[:, None], tau_mesh.flatten()[:, None]])
@@ -223,6 +230,24 @@ def main(args):
 
     # get the washout data and true gradient
     print("Preparing washout and retrieving the true gradient", flush=True)
+    # find out which variables were used for training in order to recreate the dataset
+    if "input_var" in hyp_results["data_config"]:
+        input_var = hyp_results["data_config"]["input_var"]
+    elif (
+        "train_var" in hyp_results["data_config"]
+    ):  # old validation logs will have this tag
+        # adding this bit so we can still handle the old logs
+        if hyp_results["data_config"]["train_var"] == "gal":
+            # Assumes we used 10 Galerkin modes!!
+            if hyp_results["ESN_dict"]["dimension"] == 20:
+                input_var = "eta_mu"
+            elif hyp_results["ESN_dict"]["dimension"] == 30:
+                input_var = "eta_mu_v"
+        else:
+            raise ValueError(
+                "Can't find the gradient from other input variables than the Galerkin variables!"
+            )
+
     (
         U_washout_grad,
         P_washout_grad,
@@ -234,6 +259,7 @@ def main(args):
         p_mesh,
         dt=hyp_results["data_config"]["dt"],
         t_washout_len=hyp_results["data_config"]["t_washout_len"],
+        input_var=input_var,
         p_var=args.p_var,
     )
 
@@ -253,7 +279,13 @@ def main(args):
         t_train,
         _,
     ) = create_dataset(
-        hyp_results["p_train_val_list"], **hyp_results["data_config"], p_var=args.p_var
+        p_list=hyp_results["p_train_val_list"],
+        dt=hyp_results["data_config"]["dt"],
+        t_washout_len=hyp_results["data_config"]["t_washout_len"],
+        t_train_len=hyp_results["data_config"]["t_train_len"],
+        grid_upsample=hyp_results["data_config"]["grid_upsample"],
+        input_var=input_var,
+        p_var=args.p_var,
     )
 
     # add noise to the data
@@ -340,9 +372,9 @@ def main(args):
 
         def run_esn_grad(my_ESN, U_washout, N_t, P_washout, P):
             if args.method == "adjoint":
-                return run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P)
+                return run_esn_grad_adj(my_ESN, U_washout, N_t, P_washout, P, N_g=10)
             elif args.method == "numerical":
-                return run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P)
+                return run_esn_grad_num(my_ESN, U_washout, N_t, P_washout, P, N_g=10)
 
         for p_idx in range(len(p_mesh)):
             J_esn[e_idx][p_idx], dJ_dp_esn[p_idx, :] = run_esn_grad(
@@ -534,8 +566,10 @@ def main(args):
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the gradients
                 plt.subplot(1, 2, 1)
-                plt.plot(beta_list, dJ_dbeta[tau_plt_idx, :])
-                plt.plot(beta_list, dJ_dbeta_esn[e_idx][tau_plt_idx, :], "--")
+                plt.plot(beta_list, dJ_dbeta[tau_plt_idx, :], "-o", markersize=5)
+                plt.plot(
+                    beta_list, dJ_dbeta_esn[e_idx][tau_plt_idx, :], "--o", markersize=4
+                )
                 plt.plot(
                     beta_list[beta_plt_train_idx_list[tt]],
                     dJ_dbeta[tau_plt_idx, beta_plt_train_idx_list[tt]],
@@ -559,7 +593,8 @@ def main(args):
                 plt.title(f"tau = {tau_plt_list[tt]}")
                 plt.legend(["True", "ESN", "Train", "Val"])
                 plt.grid()
-                plt.ylim([4.5, 6.5])
+                # plt.ylim([4.5, 6.5])
+                plt.ylim([-1, 10])
 
                 # plot the relative error
                 plt.subplot(1, 2, 2)
@@ -591,7 +626,7 @@ def main(args):
                 # save figure
                 fig.savefig(
                     results_path
-                    / f"dJ_dbeta_tau_{tau_name}_ESN_{e_idx}_{args.method}.png"
+                    / f"dJ_dbeta_tau_{tau_name}_ESN_{e_idx}_{args.method}_full3.png"
                 )
                 plt.close()
 
@@ -599,8 +634,8 @@ def main(args):
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the energy
                 plt.subplot(1, 2, 1)
-                plt.plot(beta_list, J[tau_plt_idx, :])
-                plt.plot(beta_list, J_esn[e_idx][tau_plt_idx, :], "--")
+                plt.plot(beta_list, J[tau_plt_idx, :], "-o", markersize=5)
+                plt.plot(beta_list, J_esn[e_idx][tau_plt_idx, :], "--o", markersize=4)
                 plt.plot(
                     beta_list[beta_plt_train_idx_list[tt]],
                     J[tau_plt_idx, beta_plt_train_idx_list[tt]],
@@ -653,15 +688,15 @@ def main(args):
                 plt.grid()
 
                 # save figure
-                fig.savefig(results_path / f"J_tau_{tau_name}_ESN_{e_idx}.png")
+                fig.savefig(results_path / f"J_tau_{tau_name}_ESN_{e_idx}_full3.png")
                 plt.close()
 
                 # NUMERICAL GRADIENT FIGURE
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the gradients
                 plt.subplot(1, 2, 1)
-                plt.plot(beta_list, dJ_dbeta[tau_plt_idx, :])
-                plt.plot(beta_list, dJ_dbeta_esn_num, "--")
+                plt.plot(beta_list, dJ_dbeta[tau_plt_idx, :], "-o", markersize=5)
+                plt.plot(beta_list, dJ_dbeta_esn_num, "--o", markersize=4)
                 plt.plot(beta_list, dJ_dbeta_num, ":", color="tab:purple", linewidth=2)
                 plt.plot(
                     beta_list[beta_plt_train_idx_list[tt]],
@@ -686,7 +721,8 @@ def main(args):
                 plt.title(f"tau = {tau_plt_list[tt]}")
                 plt.legend(["True", "ESN Numerical", "Numerical", "Train", "Val"])
                 plt.grid()
-                plt.ylim([4.5, 6.5])
+                # plt.ylim([4.5, 6.5])
+                plt.ylim([-1, 10])
 
                 # plot the relative error
                 plt.subplot(1, 2, 2)
@@ -733,7 +769,7 @@ def main(args):
                 # save figure
                 fig.savefig(
                     results_path
-                    / f"dJ_dbeta_num_tau_{tau_name}_ESN_{e_idx}_{args.method}.png"
+                    / f"dJ_dbeta_num_tau_{tau_name}_ESN_{e_idx}_{args.method}_full3.png"
                 )
                 plt.close()
 
@@ -765,8 +801,10 @@ def main(args):
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the gradients
                 plt.subplot(1, 2, 1)
-                plt.plot(tau_list, dJ_dtau[:, beta_plt_idx])
-                plt.plot(tau_list, dJ_dtau_esn[e_idx][:, beta_plt_idx], "--")
+                plt.plot(tau_list, dJ_dtau[:, beta_plt_idx], "-o", markersize=5)
+                plt.plot(
+                    tau_list, dJ_dtau_esn[e_idx][:, beta_plt_idx], "--o", markersize=4
+                )
                 plt.plot(
                     tau_list[tau_plt_train_idx_list[bb]],
                     dJ_dtau[tau_plt_train_idx_list[bb], beta_plt_idx],
@@ -790,8 +828,8 @@ def main(args):
                 plt.title(f"beta = {beta_plt_list[bb]}")
                 plt.legend(["True", "ESN", "Train", "Val"])
                 plt.grid()
-                plt.ylim([50, 90])
-
+                # plt.ylim([50, 90])
+                plt.ylim([-25, 100])
                 # plot the relative error
                 plt.subplot(1, 2, 2)
                 plt.plot(tau_list, rel_err_grad, linestyle="-", marker="o")
@@ -820,7 +858,7 @@ def main(args):
                 plt.grid()
                 fig.savefig(
                     results_path
-                    / f"dJ_dtau_beta_{beta_name}_ESN_{e_idx}_{args.method}.png"
+                    / f"dJ_dtau_beta_{beta_name}_ESN_{e_idx}_{args.method}_full2.png"
                 )
                 plt.close()
 
@@ -828,8 +866,8 @@ def main(args):
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the energy
                 plt.subplot(1, 2, 1)
-                plt.plot(tau_list, J[:, beta_plt_idx])
-                plt.plot(tau_list, J_esn[e_idx][:, beta_plt_idx], "--")
+                plt.plot(tau_list, J[:, beta_plt_idx], "-o", markersize=5)
+                plt.plot(tau_list, J_esn[e_idx][:, beta_plt_idx], "--o", markersize=4)
                 plt.plot(
                     tau_list[tau_plt_train_idx_list[bb]],
                     J[tau_plt_train_idx_list[bb], beta_plt_idx],
@@ -882,15 +920,15 @@ def main(args):
                 plt.grid()
 
                 # save figure
-                fig.savefig(results_path / f"J_beta_{beta_name}_ESN_{e_idx}.png")
+                fig.savefig(results_path / f"J_beta_{beta_name}_ESN_{e_idx}_full2.png")
                 plt.close()
 
                 # NUMERICAL GRADIENT FIGURE
                 fig = plt.figure(figsize=(12, 4), constrained_layout=True)
                 # plot the gradients
                 plt.subplot(1, 2, 1)
-                plt.plot(tau_list, dJ_dtau[:, beta_plt_idx])
-                plt.plot(tau_list, dJ_dtau_esn_num, "--")
+                plt.plot(tau_list, dJ_dtau[:, beta_plt_idx], "-o", markersize=5)
+                plt.plot(tau_list, dJ_dtau_esn_num, "--o", markersize=4)
                 plt.plot(tau_list, dJ_dtau_num, ":", color="tab:purple", linewidth=2)
                 plt.plot(
                     tau_list[tau_plt_train_idx_list[bb]],
@@ -915,7 +953,8 @@ def main(args):
                 plt.title(f"beta = {beta_plt_list[bb]}")
                 plt.legend(["True", "ESN Numerical", "Numerical", "Train", "Val"])
                 plt.grid()
-                plt.ylim([50, 90])
+                # plt.ylim([50, 90])
+                plt.ylim([-25, 100])
 
                 # plot the relative error
                 plt.subplot(1, 2, 2)
@@ -962,7 +1001,7 @@ def main(args):
                 # save figure
                 fig.savefig(
                     results_path
-                    / f"dJ_dtau_num_beta_{beta_name}_ESN_{e_idx}_{args.method}.png"
+                    / f"dJ_dtau_num_beta_{beta_name}_ESN_{e_idx}_{args.method}_full2.png"
                 )
                 plt.close()
     # pool.close()
