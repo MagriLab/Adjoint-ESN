@@ -2,6 +2,7 @@
 **/data_test
 **/data_new
 **/results
+**/results_new
 **/wandb
 __pycache__/
 .ipynb_checkpoints/

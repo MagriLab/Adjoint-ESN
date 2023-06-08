@@ -3,6 +3,9 @@ from scipy.sparse import csc_matrix, csr_matrix, lil_matrix
 from scipy.sparse.linalg import eigs as sparse_eigs
 from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
+import adjoint_esn.generate_input_weights as generate_input_weights
+import adjoint_esn.generate_reservoir_weights as generate_reservoir_weights
+
 
 class ESN:
     def __init__(
@@ -22,6 +25,9 @@ class ESN:
         reservoir_seeds=[None, None],
         verbose=True,
         r2_mode=False,
+        input_only_mode=False,
+        input_weights_mode="sparse2",
+        reservoir_weights_mode="erdos_renyi2",
     ):
         """Creates an Echo State Network with the given parameters
         Args:
@@ -47,6 +53,8 @@ class ESN:
         """
         self.verbose = verbose
         self.r2_mode = r2_mode
+        self.input_only_mode = input_only_mode
+
         ## Hyperparameters
         # these should be fixed during initialization and not changed since they affect
         # the matrix dimensions, and the matrices can become incompatible
@@ -76,13 +84,15 @@ class ESN:
         )
         # N_dim+length of input bias because we augment the inputs with a bias
         # if no bias, then this will be + 0
-        self.input_weights = self.generate_input_weights2()
+        self.input_weights_mode = input_weights_mode
+        self.input_weights = self.generate_input_weights()
         self.input_scaling = input_scaling
         # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
         self.W_seeds = reservoir_seeds
         self.W_shape = (self.N_reservoir, self.N_reservoir)
+        self.reservoir_weights_mode = reservoir_weights_mode
         self.reservoir_weights = self.generate_reservoir_weights()
         self.spectral_radius = spectral_radius
         # reservoir weights are automatically scaled if spectral radius is updated
@@ -262,7 +272,7 @@ class ESN:
         # first check the dimensions
         if new_output_weights.shape != self.W_out_shape:
             raise ValueError(
-                f"The shape of the provided reservoir weights does not match with the network,"
+                f"The shape of the provided output weights does not match with the network,"
                 f"{new_output_weights.shape} != {self.W_out_shape}"
             )
         # set the new reservoir weights
@@ -296,129 +306,26 @@ class ESN:
         return 1 - (self.connectivity / (self.N_reservoir - 1))
 
     def generate_input_weights(self):
-        """Create the input weights matrix
-        Args:
-            seeds: a list of seeds for the random generators;
-                one for the column index, one for the uniform sampling
-        Returns:
-            W_in: sparse matrix containing the input weights
-        """
-        # initialize W_in with zeros
-        W_in = lil_matrix(self.W_in_shape)
-        # set the seeds
-        rnd0 = np.random.RandomState(self.W_in_seeds[0])
-        rnd1 = np.random.RandomState(self.W_in_seeds[1])
-        rnd2 = np.random.RandomState(self.W_in_seeds[2])
-
-        # make W_in
-        for j in range(self.N_reservoir):
-            rnd_idx = rnd0.randint(0, self.W_in_shape[1] - self.N_param_dim)
-            # only one element different from zero
-            # sample from the uniform distribution
-            W_in[j, rnd_idx] = rnd1.uniform(-1, 1)
-
-            # W_in[j,:self.W_in_shape[1]-self.N_param_dim] = rnd1.uniform(-1,1,(self.W_in_shape[1]-self.N_param_dim,))
-
-        # input associated with system's bifurcation parameters are
-        # fully connected to the reservoir states
-        if self.N_param_dim > 0:
-            W_in[:, -self.N_param_dim :] = rnd2.uniform(
-                -1, 1, (self.N_reservoir, self.N_param_dim)
+        if self.input_weights_mode == "sparse1":
+            return generate_input_weights.sparse1(
+                self.W_in_shape, self.N_param_dim, self.W_in_seeds
             )
-
-        W_in = W_in.tocsr()
-
-        return W_in
-
-    def generate_input_weights2(self):
-        # initialize W_in with zeros
-        W_in = lil_matrix(self.W_in_shape)
-        rnd0 = np.random.RandomState(self.W_in_seeds[0])
-        rnd1 = np.random.RandomState(self.W_in_seeds[1])
-
-        for i in range(self.N_reservoir):
-            W_in[
-                i,
-                int(
-                    np.floor(
-                        i * (self.W_in_shape[1] - self.N_param_dim) / self.N_reservoir
-                    )
-                ),
-            ] = (
-                2 * rnd0.random() - 1
+        elif self.input_weights_mode == "sparse2":
+            return generate_input_weights.sparse2(
+                self.W_in_shape, self.N_param_dim, self.W_in_seeds
             )
-
-        if self.N_param_dim > 0:
-            W_in[:, -self.N_param_dim :] = (
-                2 * rnd1.random((self.N_reservoir, self.N_param_dim)) - 1
-            )
-
-        W_in = W_in.tocsr()
-        return W_in
+        elif self.input_weights_mode == "dense":
+            return generate_input_weights.dense(self.W_in_shape, self.W_in_seeds)
 
     def generate_reservoir_weights(self):
-        """Create the reservoir weights matrix according to Erdos-Renyi network
-        Args:
-            seeds: a list of seeds for the random generators;
-                one for the connections, one for the uniform sampling of weights
-        Returns:
-            W: sparse matrix containing reservoir weights
-        """
-        # set the seeds
-        rnd0 = np.random.RandomState(self.W_seeds[0])  # connection rng
-        rnd1 = np.random.RandomState(self.W_seeds[1])  # sampling rng
-
-        # initialize with zeros
-        W = np.zeros(self.W_shape)
-
-        # generate a matrix sampled from the uniform distribution (0,1)
-        W_connection = rnd0.rand(self.W_shape[0], self.W_shape[1])
-
-        # generate the weights from the uniform distribution (-1,1)
-        W_weights = rnd1.uniform(-1, 1, self.W_shape)
-
-        # replace the connections with the weights
-        W = np.where(W_connection < (1 - self.sparseness), W_weights, W)
-        # 1-sparseness is the connection probability = p,
-        # after sampling from the uniform distribution between (0,1),
-        # the probability of being in the region (0,p) is the same as having probability p
-        # (this is equivalent to drawing from a Bernoulli distribution with probability p)
-
-        W = csr_matrix(W)
-
-        # find the spectral radius of the generated matrix
-        # this is the maximum absolute eigenvalue
-        rho_pre = np.abs(sparse_eigs(W, k=1, which="LM", return_eigenvectors=False))[0]
-
-        # first scale W by the spectral radius to get unitary spectral radius
-        W = (1 / rho_pre) * W
-
-        return W
-
-    def generate_reservoir_weights2(self):
-        prob = 1 - self.sparseness
-
-        # set the seeds
-        rnd0 = np.random.RandomState(self.W_seeds[0])  # connection rng
-        rnd1 = np.random.RandomState(self.W_seeds[1])  # sampling rng
-
-        # initialize with zeros
-        W = np.zeros(self.W_shape)
-        for i in range(self.N_reservoir):
-            for j in range(self.N_reservoir):
-                b = rnd0.random()
-                if (i != j) and (b < prob):
-                    W[i, j] = rnd1.random()
-
-        W = csr_matrix(W)
-
-        # find the spectral radius of the generated matrix
-        # this is the maximum absolute eigenvalue
-        rho_pre = np.abs(sparse_eigs(W, k=1, which="LM", return_eigenvectors=False))[0]
-
-        # first scale W by the spectral radius to get unitary spectral radius
-        W = (1 / rho_pre) * W
-        return W
+        if self.reservoir_weights_mode == "erdos_renyi1":
+            return generate_reservoir_weights.erdos_renyi1(
+                self.W_shape, self.sparseness, self.W_seeds
+            )
+        if self.reservoir_weights_mode == "erdos_renyi2":
+            return generate_reservoir_weights.erdos_renyi2(
+                self.W_shape, self.sparseness, self.W_seeds
+            )
 
     def step(self, x_prev, u, p=None):
         """Advances ESN time step.
@@ -442,12 +349,12 @@ class ESN:
             u_augmented = np.hstack(
                 (u_augmented, (p - self.norm_p[0]) / self.norm_p[1])
             )
-            # u_augmented = np.hstack(
-            #    (u_augmented, ((p - self.norm_p[0]) / self.norm_p[1])**2)
-            # )
 
         # update the reservoir
-        x_tilde = np.tanh(self.W_in.dot(u_augmented) + self.W.dot(x_prev))
+        if self.input_only_mode:
+            x_tilde = np.tanh(self.W_in.dot(u_augmented))
+        else:
+            x_tilde = np.tanh(self.W_in.dot(u_augmented) + self.W.dot(x_prev))
 
         # apply the leaky integrator
         x = (1 - self.alpha) * x_prev + self.alpha * x_tilde
@@ -555,7 +462,7 @@ class ESN:
         X, Y = self.closed_loop(x0=x0, N_t=N_t, P=P)
         return X, Y
 
-    def solve_ridge(self, X, Y, tikh):
+    def solve_ridge(self, X, Y, tikh, sample_weights):
         """Solves the ridge regression problem
         Args:
             X: input data
@@ -567,14 +474,20 @@ class ESN:
         # scikit recommends minibatch sgd method for large scale data
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
-        reg = Ridge(alpha=tikh, fit_intercept=False)
-        # # reg = Lasso(alpha=tikh, max_iter = 5000, fit_intercept=False)
-        # # reg = ElasticNet(alpha=tikh, l1_ratio = 0.1, max_iter = 5000, fit_intercept=False)
-        reg.fit(X, Y)
-        W_out = (
-            reg.coef_.T
-        )  # we take the transpose because of how the closed loop is structured
-
+        if sample_weights is not None and len(sample_weights) == Y.shape[1]:
+            W_out = np.zeros((X.shape[1], Y.shape[1]))
+            for y_idx in range(Y.shape[1]):
+                reg = Ridge(alpha=tikh, fit_intercept=False)
+                reg.fit(X, Y[:, y_idx], sample_weight=sample_weights[y_idx])
+                W_out[
+                    :, y_idx
+                ] = (
+                    reg.coef_.T
+                )  # we take the transpose because of how the closed loop is structured
+        else:
+            reg = Ridge(alpha=tikh, fit_intercept=False)
+            reg.fit(X, Y, sample_weight=sample_weights)
+            W_out = reg.coef_.T
         # W_out = np.dot(np.dot(Y.T, X), np.linalg.inv((np.dot(X.T, X)+tikh*np.identity(self.N_reservoir))))
         # W_out = W_out.T
         return W_out
@@ -606,6 +519,7 @@ class ESN:
         P_train=None,
         tikhonov=1e-12,
         train_idx_list=None,
+        sample_weights=None,
     ):
         """Trains ESN and sets the output weights.
         Args:
@@ -633,6 +547,7 @@ class ESN:
                     P_train[train_idx],
                 )
                 X_train_augmented = np.vstack((X_train_augmented, X_train_augmented_))
+
             Y_train = [Y_train[train_idx] for train_idx in train_idx_list]
             Y_train = np.vstack(Y_train)
         else:
@@ -642,7 +557,9 @@ class ESN:
 
         # solve for W_out using ridge regression
         self.tikhonov = tikhonov  # set the tikhonov during training
-        self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
+        self.output_weights = self.solve_ridge(
+            X_train_augmented, Y_train, tikhonov, sample_weights
+        )
         return
 
     # Georgios implementation

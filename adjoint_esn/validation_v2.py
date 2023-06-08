@@ -10,6 +10,7 @@ from skopt.plots import plot_convergence
 from skopt.space import Real
 
 from adjoint_esn.esn import ESN
+from adjoint_esn.rijke_esn import RijkeESN
 
 
 def set_ESN(my_ESN, param_names, param_scales, params):
@@ -99,6 +100,7 @@ def loop(
     N_washout,
     N_val,
     N_trans,
+    ESN_type="standard",  # "standard" or "rijke"
 ):
     # initialize a base ESN object with unit input scaling and spectral radius
     # seeds not given, so the random generator creates a different seed each run
@@ -114,10 +116,16 @@ def loop(
     realisation_error = np.zeros(n_realisations)
     for real_idx in range(n_realisations):
         print("Realisation:", real_idx)
-        my_ESN = ESN(
-            **ESN_dict,
-            verbose=False,
-        )
+        if ESN_type == "standard":
+            my_ESN = ESN(
+                **ESN_dict,
+                verbose=False,
+            )
+        elif ESN_type == "rijke":
+            my_ESN = RijkeESN(
+                **ESN_dict,
+                verbose=False,
+            )
         # set the ESN with the given parameters
         set_ESN(my_ESN, param_names, param_scales, params)
 
@@ -217,6 +225,7 @@ def validate(
     N_transient_steps,
     train_idx_list,
     val_idx_list,
+    ESN_type="standard",
 ):
 
     n_param = len(param_names)  # number of parameters
@@ -261,6 +270,7 @@ def validate(
             N_washout=N_washout_steps,
             N_val=N_val_steps,
             N_trans=N_transient_steps,
+            ESN_type=ESN_type,
         )
 
         res = run_gp_optimization(
@@ -280,7 +290,7 @@ def validate(
                 min_dict["params"][i][j, param_idx] = new_param
 
             min_dict["f"][i][j] = res.func_vals[min_idx]
-
+        min_dict["tikh"] = tikh
         print(min_dict)
 
     return min_dict

@@ -288,7 +288,7 @@ def main(args):
     p_mean = np.mean(np.vstack(P_train), axis=0)
     p_std = np.std(np.vstack(P_train), axis=0)
     p_norm_mean_in = -1.0 * p_mean
-    p_norm_mean_end = 2.0 * p_mean
+    p_norm_mean_end = 3.0 * p_mean
     p_norm_mean = np.array([p_norm_mean_in, p_norm_mean_end]).T
     p_norm_var_in = np.log10(0.2 * p_std)  # std of 5
     p_norm_var_end = np.log10(40.0 * p_std)  # std of 0.025
