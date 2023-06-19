@@ -306,12 +306,12 @@ class ESN:
         return 1 - (self.connectivity / (self.N_reservoir - 1))
 
     def generate_input_weights(self):
-        if self.input_weights_mode == "sparse1":
-            return generate_input_weights.sparse1(
+        if self.input_weights_mode == "sparse_random":
+            return generate_input_weights.sparse_random(
                 self.W_in_shape, self.N_param_dim, self.W_in_seeds
             )
-        elif self.input_weights_mode == "sparse2":
-            return generate_input_weights.sparse2(
+        elif self.input_weights_mode == "sparse_grouped":
+            return generate_input_weights.sparse_grouped(
                 self.W_in_shape, self.N_param_dim, self.W_in_seeds
             )
         elif self.input_weights_mode == "dense":

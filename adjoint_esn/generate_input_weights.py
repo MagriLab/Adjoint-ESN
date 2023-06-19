@@ -3,7 +3,7 @@ import numpy as np
 from scipy.sparse import lil_matrix
 
 
-def sparse1(W_in_shape, N_param_dim, W_in_seeds):
+def sparse_random(W_in_shape, N_param_dim, W_in_seeds):
     """Create the input weights matrix
     Args:
         W_in_shape: N_reservoir x (N_inputs + N_input_bias + N_param_dim)
@@ -36,7 +36,7 @@ def sparse1(W_in_shape, N_param_dim, W_in_seeds):
     return W_in
 
 
-def sparse2(W_in_shape, N_param_dim, W_in_seeds):
+def sparse_grouped(W_in_shape, N_param_dim, W_in_seeds):
     # initialize W_in with zeros
     W_in = lil_matrix(W_in_shape)
     rnd0 = np.random.RandomState(W_in_seeds[0])
@@ -49,7 +49,7 @@ def sparse2(W_in_shape, N_param_dim, W_in_seeds):
         ] = rnd0.uniform(-1, 1)
 
     if N_param_dim > 0:
-        W_in[:, -N_param_dim:] = 2 * rnd1.random((W_in_shape[0], N_param_dim)) - 1
+        W_in[:, -N_param_dim:] = rnd1.uniform(-1, 1, (W_in_shape[0], N_param_dim))
 
     W_in = W_in.tocsr()
     return W_in
@@ -58,4 +58,68 @@ def sparse2(W_in_shape, N_param_dim, W_in_seeds):
 def dense(W_in_shape, W_in_seeds):
     rnd0 = np.random.RandomState(W_in_seeds[0])
     W_in = rnd0.uniform(-1, 1, W_in_shape)
+    return W_in
+
+
+def sparse_grouped_rijke(W_in_shape, N_param_dim, W_in_seeds, u_f_order):
+    # sparse input matrix that has the parameter concatenated only with u_f(t-\tau)
+
+    # initialize W_in with zeros
+    W_in = lil_matrix(W_in_shape)
+    rnd0 = np.random.RandomState(W_in_seeds[0])
+    rnd1 = np.random.RandomState(W_in_seeds[1])
+
+    for i in range(W_in_shape[0]):
+        W_in[
+            i,
+            int(np.floor(i * (W_in_shape[1] - N_param_dim) / W_in_shape[0])),
+        ] = rnd0.uniform(-1, 1)
+
+    # find the indices of u_f(t-\tau)
+    for order in range(u_f_order):
+        u_f_idx = np.where(W_in[:, -N_param_dim - (u_f_order - order)].toarray() != 0)[
+            0
+        ]
+
+        if N_param_dim > 0:
+            W_in[u_f_idx, -N_param_dim:] = rnd1.uniform(
+                -1, 1, (len(u_f_idx), N_param_dim)
+            )
+
+    W_in = W_in.tocsr()
+    return W_in
+
+
+def sparse_grouped_rijke_dense(W_in_shape, N_param_dim, W_in_seeds, u_f_order):
+    # sparse input matrix that has the parameter concatenated only with u_f(t-\tau)
+
+    # initialize W_in with zeros
+    W_in = lil_matrix(W_in_shape)
+    rnd0 = np.random.RandomState(W_in_seeds[0])
+    rnd1 = np.random.RandomState(W_in_seeds[1])
+
+    n_groups = int(
+        np.floor(W_in_shape[0] / (W_in_shape[1] - N_param_dim - u_f_order + 1))
+    )
+    n_sparse_groups = W_in_shape[0] - n_groups
+    for i in range(n_sparse_groups):
+        W_in[
+            i,
+            int(
+                np.floor(
+                    i * (W_in_shape[1] - N_param_dim - u_f_order) / n_sparse_groups
+                )
+            ),
+        ] = rnd0.uniform(-1, 1)
+
+    W_in[n_sparse_groups:, -N_param_dim - u_f_order : -N_param_dim] = rnd0.uniform(
+        -1, 1, (n_groups, u_f_order)
+    )
+
+    if N_param_dim > 0:
+        W_in[n_sparse_groups:, -N_param_dim:] = rnd1.uniform(
+            -1, 1, (n_groups, N_param_dim)
+        )
+
+    W_in = W_in.tocsr()
     return W_in

@@ -1,5 +1,7 @@
 import numpy as np
+from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
+import adjoint_esn.generate_input_weights as generate_input_weights
 from adjoint_esn.esn import ESN
 from adjoint_esn.rijke_galerkin.solver import Rijke
 
@@ -26,6 +28,8 @@ class RijkeESN(ESN):
         parameter_dimension=0,
         parameter_normalization=[np.array([0.0]), np.array([1.0])],
         input_scaling=1.0,
+        u_f_scaling=1.0,
+        u_f_order=1,
         spectral_radius=1.0,
         leak_factor=1.0,
         input_bias=np.array([]),
@@ -56,6 +60,7 @@ class RijkeESN(ESN):
 
         self.N_dim = 2 * self.N_g  # output dimension
         self.N_param_dim = parameter_dimension
+        self.u_f_order = u_f_order
 
         self.reservoir_connectivity = reservoir_connectivity
 
@@ -75,13 +80,14 @@ class RijkeESN(ESN):
         self.W_in_seeds = input_seeds
         self.W_in_shape = (
             self.N_reservoir,
-            self.N_dim + len(self.input_bias) + 1 + self.N_param_dim,
+            self.N_dim + len(self.input_bias) + self.u_f_order + self.N_param_dim,
         )
         # N_dim+length of input bias because we augment the inputs with a bias
         # if no bias, then this will be + 0
         self.input_weights_mode = input_weights_mode
         self.input_weights = self.generate_input_weights()
         self.input_scaling = input_scaling
+        self.u_f_scaling = u_f_scaling
         # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
@@ -106,6 +112,67 @@ class RijkeESN(ESN):
     def tau(self, new_tau):
         self._tau = new_tau
         self.N_tau = int(self.tau / self.dt)
+        return
+
+    def generate_input_weights(self):
+        if self.input_weights_mode == "sparse_grouped_rijke":
+            return generate_input_weights.sparse_grouped_rijke(
+                self.W_in_shape, self.N_param_dim, self.W_in_seeds, self.u_f_order
+            )
+        elif self.input_weights_mode == "sparse_grouped_rijke_dense":
+            return generate_input_weights.sparse_grouped_rijke_dense(
+                self.W_in_shape, self.N_param_dim, self.W_in_seeds, self.u_f_order
+            )
+        else:
+            super().generate_input_weights()
+
+    @property
+    def input_scaling(self):
+        return self.sigma_in
+
+    @input_scaling.setter
+    def input_scaling(self, new_input_scaling):
+        """Setter for the input scaling, if new input scaling is given,
+        then the input weight matrix is also updated
+        """
+        if hasattr(self, "sigma_in"):
+            # rescale the input matrix
+            self.W_in[:, : -self.N_param_dim - self.u_f_order] = (
+                1 / self.sigma_in
+            ) * self.W_in[:, : -self.N_param_dim - self.u_f_order]
+        # set input scaling
+        self.sigma_in = new_input_scaling
+        if self.verbose:
+            print("Input weights are rescaled with the new input scaling.")
+        self.W_in[:, : -self.N_param_dim - self.u_f_order] = (
+            self.sigma_in * self.W_in[:, : -self.N_param_dim - self.u_f_order]
+        )
+        return
+
+    @property
+    def u_f_scaling(self):
+        return self.sigma_u_f
+
+    @input_scaling.setter
+    def u_f_scaling(self, new_u_f_scaling):
+        """Setter for the u_f(t-tau) scaling, if new u_f(t-tau) scaling is given,
+        then the input weight matrix is also updated
+        """
+        if hasattr(self, "sigma_u_f"):
+            # rescale the input matrix
+            self.W_in[:, -self.N_param_dim - self.u_f_order : -self.N_param_dim] = (
+                1 / self.sigma_u_f
+            ) * self.W_in[:, -self.N_param_dim - self.u_f_order : -self.N_param_dim]
+        # set input scaling
+        self.sigma_u_f = new_u_f_scaling
+        if self.verbose:
+            print(
+                "Input weights of u_f(t-tau) are rescaled with the new input scaling."
+            )
+        self.W_in[:, -self.N_param_dim - self.u_f_order : -self.N_param_dim] = (
+            self.sigma_u_f
+            * self.W_in[:, -self.N_param_dim - self.u_f_order : -self.N_param_dim]
+        )
         return
 
     def closed_loop(self, X_tau, N_t, P=None):
@@ -146,7 +213,9 @@ class RijkeESN(ESN):
             velocity_f_tau = Rijke.toVelocity(
                 N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
             )
-            y_augmented = np.hstack((Y[n - 1, :], velocity_f_tau))
+            y_augmented = Y[n - 1, :]
+            for order in range(self.u_f_order):
+                y_augmented = np.hstack((y_augmented, velocity_f_tau ** (order + 1)))
 
             if self.N_param_dim > 0:
                 X[n, :] = self.step(X[n - 1, :], y_augmented, P[n - 1, :])
@@ -181,3 +250,29 @@ class RijkeESN(ESN):
         P = np.vstack((P_washout[-self.N_tau - 1 :, :], P))
         X, Y = self.closed_loop(X_tau, N_t=N_t, P=P)
         return X, Y
+
+    # def solve_ridge(self, X, Y, tikh, sample_weights = None):
+    #     # solve ridge for each row, mask the uncoupled modes
+    #     # works only for the sparse case and u_f_order = 1
+    #     W_out = np.zeros(self.W_out_shape)
+    #     for y_idx in range(Y.shape[1]):
+    #         reg = Ridge(alpha=tikh, fit_intercept=False)
+    #         if y_idx < self.N_g:
+    #             eta_j_idx = np.where(self.W_in[:,y_idx].toarray()  != 0)[0]
+    #             mu_j_idx = np.where(self.W_in[:,self.N_g+y_idx].toarray()  != 0)[0]
+    #             unmasked_idx = np.hstack((eta_j_idx,mu_j_idx))
+    #         elif y_idx >= self.N_g:
+    #             eta_j_idx = np.where(self.W_in[:,y_idx-self.N_g].toarray() != 0)[0]
+    #             mu_j_idx = np.where(self.W_in[:,y_idx].toarray() != 0)[0]
+    #             u_f_idx =  np.where(self.W_in[:,-self.N_param_dim-1].toarray() != 0)[0]
+    #             unmasked_idx = np.hstack((eta_j_idx,mu_j_idx))
+    #             unmasked_idx = np.hstack((unmasked_idx,u_f_idx))
+
+    #         X_new = X[:,unmasked_idx]
+    #         reg.fit(X_new, Y[:, y_idx], sample_weight=None)
+    #         W_out[unmasked_idx, y_idx
+    #             ] = (
+    #                 reg.coef_.T
+    #             )
+
+    #     return W_out
