@@ -26,7 +26,7 @@ class ESN:
         verbose=True,
         r2_mode=False,
         input_only_mode=False,
-        input_weights_mode="sparse2",
+        input_weights_mode="sparse_grouped",
         reservoir_weights_mode="erdos_renyi2",
     ):
         """Creates an Echo State Network with the given parameters
@@ -589,7 +589,7 @@ class ESN:
     def dfdu_const(self):
         if not hasattr(self, "_dfdu_const"):
             self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
-                1.0 / self.norm_in[1]
+                1.0 / self.norm_in[1][: self.N_dim]
             )
         return self._dfdu_const
 
@@ -612,7 +612,7 @@ class ESN:
             self._dfdr_r_const = csr_matrix((1 - self.alpha) * np.eye(self.N_reservoir))
         return self._dfdr_r_const
 
-    def jac(self, x):
+    def jac(self, x, x_prev):
         """Jacobian of the reservoir states, ESN in closed loop
         taken from
         Georgios Margazoglou, Luca Magri:
@@ -624,11 +624,15 @@ class ESN:
         Returns:
         dfdr: jacobian of the reservoir states, csr_matrix
         """
-        dtanh = 1.0 - x**2
+        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
+        dtanh = 1.0 - x_tilde**2
         dtanh = dtanh[:, None]
         # dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
         dfdr_u = np.multiply(self.dfdu_dudr_const, dtanh)
-        dfdr_r = self.dfdr_r_const + self.W.multiply(dtanh)
+        if self.input_only_mode:
+            dfdr_r = self.dfdr_r_const
+        else:
+            dfdr_r = self.dfdr_r_const + self.alpha * self.W.multiply(dtanh)
         dfdr = dfdr_r.toarray() + dfdr_u
         return dfdr
 
@@ -640,7 +644,7 @@ class ESN:
             )
         return self._drdp_const
 
-    def drdp(self, x):
+    def drdp(self, x, x_prev):
         """Jacobian of the reservoir states with respect to the parameters
         \partial x(i) / \partial p
         Args:
@@ -648,7 +652,8 @@ class ESN:
         Returns:
         drdp: csr_matrix?
         """
-        dtanh = 1.0 - x**2
+        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
+        dtanh = 1.0 - x_tilde**2
         dtanh = dtanh[:, None]
         drdp = self.drdp_const.multiply(dtanh)
         return drdp

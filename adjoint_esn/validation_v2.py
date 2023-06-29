@@ -10,7 +10,9 @@ from skopt.plots import plot_convergence
 from skopt.space import Real
 
 from adjoint_esn.esn import ESN
+from adjoint_esn.input_only_esn import InputOnlyESN
 from adjoint_esn.rijke_esn import RijkeESN
+from adjoint_esn.rijke_input_only_esn import RijkeInputOnlyESN
 
 
 def set_ESN(my_ESN, param_names, param_scales, params):
@@ -123,6 +125,16 @@ def loop(
             )
         elif ESN_type == "rijke":
             my_ESN = RijkeESN(
+                **ESN_dict,
+                verbose=False,
+            )
+        elif ESN_type == "standard_input_only":
+            my_ESN = InputOnlyESN(
+                **ESN_dict,
+                verbose=False,
+            )
+        elif ESN_type == "rijke_input_only":
+            my_ESN = RijkeInputOnlyESN(
                 **ESN_dict,
                 verbose=False,
             )

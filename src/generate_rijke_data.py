@@ -46,7 +46,7 @@ def run_sim(params):
     print(sim_str)
     args_dict = {
         "data_path": Path(sim_str),
-        "grad_adjoint": True,
+        "grad_adjoint": False,
         "dx": None,
         "N_x": None,
         "dt": 1e-3,
@@ -68,8 +68,8 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.arange(0.3, 4.1, 0.1)
-    tau_list = np.array([0.05, 0.1, 0.15, 0.25, 0.3])
+    beta_list = np.array([0.6])
+    tau_list = np.array([0.1])
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     print(mp.cpu_count())

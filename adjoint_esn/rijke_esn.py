@@ -39,7 +39,7 @@ class RijkeESN(ESN):
         verbose=True,
         r2_mode=False,
         input_only_mode=False,
-        input_weights_mode="sparse2",
+        input_weights_mode="sparse_grouped",
         reservoir_weights_mode="erdos_renyi2",
     ):
 
@@ -114,6 +114,15 @@ class RijkeESN(ESN):
         self.N_tau = int(self.tau / self.dt)
         return
 
+    @property
+    def x_f(self):
+        return self._x_f
+
+    @x_f.setter
+    def x_f(self, new_x_f):
+        self._x_f = new_x_f
+        return
+
     def generate_input_weights(self):
         if self.input_weights_mode == "sparse_grouped_rijke":
             return generate_input_weights.sparse_grouped_rijke(
@@ -153,7 +162,7 @@ class RijkeESN(ESN):
     def u_f_scaling(self):
         return self.sigma_u_f
 
-    @input_scaling.setter
+    @u_f_scaling.setter
     def u_f_scaling(self, new_u_f_scaling):
         """Setter for the u_f(t-tau) scaling, if new u_f(t-tau) scaling is given,
         then the input weight matrix is also updated
@@ -276,3 +285,61 @@ class RijkeESN(ESN):
     #             )
 
     #     return W_out
+    @property
+    def dfdr_tau_const(self):
+        if not hasattr(self, "_dfdr_tau_const"):
+            j = np.arange(1, self.N_g + 1)
+            modes = np.cos(j * np.pi * self.x_f)
+            modes = np.hstack((modes, np.zeros(self.N_g)))
+            W_in_f = self.W_in[
+                :, -self.N_param_dim - self.u_f_order : -self.N_param_dim
+            ].multiply(
+                1.0
+                / self.norm_in[1][
+                    -self.N_param_dim - self.u_f_order : -self.N_param_dim
+                ]
+            )
+            W_out_modes = np.dot(self.W_out[: self.N_reservoir, :], modes)[:, None].T
+            self._dfdr_tau_const = self.alpha * (W_in_f.dot(W_out_modes))
+        return self._dfdr_tau_const
+
+    def jac_tau(self, x, x_prev):
+        """Jacobian of the reservoir states with respect to the tau delayed
+        reservoir states
+        Args:
+        x: reservoir states at time i+1, x(i+1)
+        Returns:
+        dfdr_tau: jacobian of the reservoir states, csr_matrix
+        """
+        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
+        dtanh = 1.0 - x_tilde**2
+        dtanh = dtanh[:, None]
+        dfdr_tau = np.multiply(self.dfdr_tau_const, dtanh)
+        return dfdr_tau
+
+    @property
+    def drdu_f_tau_const(self):
+        if not hasattr(self, "_drdu_f_tau_const"):
+            self._drdu_f_tau_const = self.alpha * self.W_in[
+                :, -self.N_param_dim - self.u_f_order : -self.N_param_dim
+            ].multiply(
+                1.0
+                / self.norm_in[1][
+                    -self.N_param_dim - self.u_f_order : -self.N_param_dim
+                ]
+            )
+        return self._drdu_f_tau_const
+
+    def drdu_f_tau(self, x, x_prev):
+        """Jacobian of the reservoir states with respect to the parameters
+        \partial x(i) / \partial p
+        Args:
+        x: reservoir states at time i+1, x(i+1)
+        Returns:
+        drdp: csr_matrix?
+        """
+        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
+        dtanh = 1.0 - x_tilde**2
+        dtanh = dtanh[:, None]
+        drdu_f_tau = self.drdu_f_tau_const.multiply(dtanh)
+        return drdu_f_tau
