@@ -285,25 +285,18 @@ class RijkeESN(ESN):
     #             )
 
     #     return W_out
+
     @property
     def dfdr_tau_const(self):
         if not hasattr(self, "_dfdr_tau_const"):
             j = np.arange(1, self.N_g + 1)
             modes = np.cos(j * np.pi * self.x_f)
             modes = np.hstack((modes, np.zeros(self.N_g)))
-            W_in_f = self.W_in[
-                :, -self.N_param_dim - self.u_f_order : -self.N_param_dim
-            ].multiply(
-                1.0
-                / self.norm_in[1][
-                    -self.N_param_dim - self.u_f_order : -self.N_param_dim
-                ]
-            )
             W_out_modes = np.dot(self.W_out[: self.N_reservoir, :], modes)[:, None].T
-            self._dfdr_tau_const = self.alpha * (W_in_f.dot(W_out_modes))
+            self._dfdr_tau_const = W_out_modes
         return self._dfdr_tau_const
 
-    def jac_tau(self, x, x_prev):
+    def jac_tau(self, x, x_prev, u_f_tau):
         """Jacobian of the reservoir states with respect to the tau delayed
         reservoir states
         Args:
@@ -314,7 +307,16 @@ class RijkeESN(ESN):
         x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
         dtanh = 1.0 - x_tilde**2
         dtanh = dtanh[:, None]
-        dfdr_tau = np.multiply(self.dfdr_tau_const, dtanh)
+
+        du_f_tau = np.zeros(self.u_f_order)
+        for order in range(self.u_f_order):
+            du_f_tau[order] = (order + 1) * u_f_tau**order
+
+        drdu_f_tau = self.drdu_f_tau_const.dot(du_f_tau)[:, None]
+
+        dfdu_f_tau = np.matmul(drdu_f_tau, self.dfdr_tau_const)
+
+        dfdr_tau = np.multiply(dfdu_f_tau, dtanh)
         return dfdr_tau
 
     @property
@@ -330,16 +332,24 @@ class RijkeESN(ESN):
             )
         return self._drdu_f_tau_const
 
-    def drdu_f_tau(self, x, x_prev):
+    def drdu_f_tau(self, x, x_prev, u_f_tau):
         """Jacobian of the reservoir states with respect to the parameters
         \partial x(i) / \partial p
         Args:
         x: reservoir states at time i+1, x(i+1)
         Returns:
-        drdp: csr_matrix?
+        drdu_f_tau: csr_matrix?
         """
         x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
         dtanh = 1.0 - x_tilde**2
         dtanh = dtanh[:, None]
-        drdu_f_tau = self.drdu_f_tau_const.multiply(dtanh)
+
+        du_f_tau = np.zeros(self.u_f_order)
+        for order in range(self.u_f_order):
+            du_f_tau[order] = (order + 1) * u_f_tau**order
+
+        drdu_f_tau_ = self.drdu_f_tau_const.dot(du_f_tau)[:, None]
+
+        drdu_f_tau = np.multiply(drdu_f_tau_, dtanh)
+
         return drdu_f_tau
