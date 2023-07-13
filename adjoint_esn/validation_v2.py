@@ -102,6 +102,7 @@ def loop(
     N_washout,
     N_val,
     N_trans,
+    p_list,
     ESN_type="standard",  # "standard" or "rijke"
 ):
     # initialize a base ESN object with unit input scaling and spectral radius
@@ -159,6 +160,10 @@ def loop(
         val_error = np.zeros(len(val_idx_list))
 
         for val_idx_idx, val_idx in enumerate(val_idx_list):
+            # set the time delay for rijke esn
+            if ESN_type == "rijke" and p_list.shape[1] == 2:
+                my_ESN.tau = p_list[val_idx, 1]
+
             print("Val regime:", val_idx)
             # n_folds_max = int(np.floor((len(U_val[val_idx])-N_washout)/N_val))
             # n_folds_final = np.min((n_folds_max, n_folds))
@@ -237,6 +242,7 @@ def validate(
     N_transient_steps,
     train_idx_list,
     val_idx_list,
+    p_list,
     ESN_type="standard",
 ):
 
@@ -283,6 +289,7 @@ def validate(
             N_val=N_val_steps,
             N_trans=N_transient_steps,
             ESN_type=ESN_type,
+            p_list=p_list,
         )
 
         res = run_gp_optimization(

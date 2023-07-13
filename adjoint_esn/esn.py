@@ -390,6 +390,25 @@ class ESN:
         # X = np.array(X)
         return X
 
+    def before_readout_r1(self, x):
+        # augment with bias before readout
+        return np.hstack((x, self.b_out))
+
+    def before_readout_r2(self, x):
+        # replaces r with r^2 if even, r otherwise
+        x2 = x.copy()
+        x2[1::2] = x2[1::2] ** 2
+        return np.hstack((x2, self.b_out))
+
+    @property
+    def before_readout(self):
+        if not hasattr(self, "_before_readout"):
+            if self.r2_mode:
+                self._before_readout = self.before_readout_r2
+            else:
+                self._before_readout = self.before_readout_r1
+        return self._before_readout
+
     def closed_loop(self, x0, N_t, P=None):
         # @todo: make it an option to hold X or just x in memory
         """Advances ESN in closed-loop.
@@ -410,12 +429,7 @@ class ESN:
         X[0, :] = x0
 
         # augment the reservoir states with the bias
-        if self.r2_mode:
-            x0_2 = x0.copy()
-            x0_2[1::2] = x0_2[1::2] ** 2
-            x0_augmented = np.hstack((x0_2, self.b_out))
-        else:
-            x0_augmented = np.hstack((x0, self.b_out))
+        x0_augmented = self.before_readout(x0)
 
         # initialise with the calculated output states
         Y[0, :] = np.dot(x0_augmented, self.W_out)
@@ -429,13 +443,7 @@ class ESN:
                 X[n, :] = self.step(X[n - 1, :], Y[n - 1, :])
 
             # augment the reservoir states with bias
-            # replaces r with r^2 if even, r otherwise
-            if self.r2_mode:
-                X2 = X[n, :].copy()
-                X2[1::2] = X2[1::2] ** 2
-                x_augmented = np.hstack((X2, self.b_out))
-            else:
-                x_augmented = np.hstack((X[n, :], self.b_out))
+            x_augmented = self.before_readout(X[n, :])
 
             # update the output with the reservoir states
             Y[n, :] = np.dot(x_augmented, self.W_out)
@@ -585,8 +593,11 @@ class ESN:
     # @TODO: these properties are fixed once they are set,
     # meaning even if the ESN is retrained, their values don't change
     # leads to wrong Jacobian being used for calculations
+
     @property
     def dfdu_const(self):
+        # constant part of gradient of x(i+1) with respect to u_in(i)
+        # sparse matrix
         if not hasattr(self, "_dfdu_const"):
             self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
                 1.0 / self.norm_in[1][: self.N_dim]
@@ -594,66 +605,329 @@ class ESN:
         return self._dfdu_const
 
     @property
-    def dudr(self):
-        if not hasattr(self, "_dudr"):
-            self._dudr = self.W_out[: self.N_reservoir, :].T
-        return self._dudr
+    def dudx_const(self):
+        # gradient of u_in(i) with respect to x(i)
+        # not sparse matrix
+        if not hasattr(self, "_dudx_const"):
+            self._dudx_const = self.W_out[: self.N_reservoir, :].T
+        return self._dudx_const
 
     @property
-    def dfdu_dudr_const(self):
-        if not hasattr(self, "_dfdu_dudr_const"):
-            # self._dfdu_dudr_const = csr_matrix(self.dfdu_const.dot(self.dudr))
-            self._dfdu_dudr_const = self.dfdu_const.dot(self.dudr)
-        return self._dfdu_dudr_const
+    def dfdu_dudx_const(self):
+        # constant part of gradient of x(i+1) with respect to x(i) due to u_in(i)
+        # not sparse matrix
+        if not hasattr(self, "_dfdu_dudx_const"):
+            self._dfdu_dudx_const = self.dfdu_const.dot(self.dudx_const)
+        return self._dfdu_dudx_const
 
     @property
-    def dfdr_r_const(self):
-        if not hasattr(self, "_dfdr_r_const"):
-            self._dfdr_r_const = csr_matrix((1 - self.alpha) * np.eye(self.N_reservoir))
-        return self._dfdr_r_const
+    def dfdx_x_const(self):
+        # constant part of gradient of x(i+1) with respect to x(i) due to x(i)
+        # sparse matrix
+        if not hasattr(self, "_dfdx_x_const"):
+            self._dfdx_x_const = csr_matrix((1 - self.alpha) * np.eye(self.N_reservoir))
+        return self._dfdx_x_const
 
-    def jac(self, x, x_prev):
+    def dtanh(self, x, x_prev):
+        """Derivative of the tanh part
+        This derivative appears in different gradient calculations
+        So, it makes sense to calculate it only once and call as required
+
+        Args:
+        x: reservoir states at time i+1, x(i+1)
+        x_prev: reservoir states at time i, x(i)
+        """
+        # first we find tanh(...)
+        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
+
+        # derivative of tanh(...) is 1-tanh**2(...)
+        dtanh = 1.0 - x_tilde**2
+
+        return dtanh
+
+    def dfdx_u_r1(self, dtanh, x_prev=None):
+        return np.multiply(self.dfdu_dudx_const, dtanh)
+
+    def dfdx_u_r2(self, dtanh, x_prev=None):
+        # derivative of x**2 terms
+        dx_prev = np.ones(self.N_reservoir)
+        dx_prev[1::2] = 2 * x_prev[1::2]
+
+        dudx = np.multiply(self.dudx_const, dx_prev)
+        dfdu_dudx = self.dfdu_const.dot(dudx)
+        return np.multiply(dfdu_dudx, dtanh)
+
+    @property
+    def dfdx_u(self):
+        if not hasattr(self, "_dfdx_u"):
+            if self.r2_mode:
+                self._dfdx_u = self.dfdx_u_r2
+            else:
+                self._dfdx_u = self.dfdx_u_r1
+        return self._dfdx_u
+
+    def jac(self, dtanh, x_prev=None):
         """Jacobian of the reservoir states, ESN in closed loop
         taken from
         Georgios Margazoglou, Luca Magri:
         Stability analysis of chaotic systems from data, arXiv preprint arXiv:2210.06167
-        x(i+1) = f(x(i),u(i))
+
+        x(i+1) = f(x(i),u(i),p)
         df(x(i),u(i))/dx(i) = \partial f/\partial x(i) + \partial f/\partial u(i)*\partial u(i)/\partial x(i)
+
+        x(i+1) = (1-alpha)*x(i)+alpha*tanh(W_in*[u(i);p]+W*x(i))
+
         Args:
-        x: reservoir states at time i+1, x(i+1)
+        dtanh: derivative of tanh at x(i+1), x(i)
+
         Returns:
-        dfdr: jacobian of the reservoir states, csr_matrix
+        dfdx: jacobian of the reservoir states
         """
-        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
-        dtanh = 1.0 - x_tilde**2
-        dtanh = dtanh[:, None]
-        # dfdr_u = self.dfdu_dudr_const.multiply(dtanh)
-        dfdr_u = np.multiply(self.dfdu_dudr_const, dtanh)
-        if self.input_only_mode:
-            dfdr_r = self.dfdr_r_const
-        else:
-            dfdr_r = self.dfdr_r_const + self.alpha * self.W.multiply(dtanh)
-        dfdr = dfdr_r.toarray() + dfdr_u
-        return dfdr
+        # gradient of x(i+1) with x(i) due to u(i) (in closed-loop)
+        dfdx_u = self.dfdx_u(dtanh, x_prev)
+
+        # gradient of x(i+1) with x(i) due to x(i) that appears explicitly
+        # no reservoir connections
+        dfdx_x = self.dfdx_x_const
+        if not self.input_only_mode:
+            dfdx_x += self.alpha * self.W.multiply(dtanh)
+
+        # total derivative
+        dfdx = dfdx_x.toarray() + dfdx_u
+        return dfdx
 
     @property
-    def drdp_const(self):
-        if not hasattr(self, "_drdp_const"):
-            self._drdp_const = self.alpha * self.W_in[:, -self.N_param_dim :].multiply(
+    def dfdp_const(self):
+        # constant part of gradient of x(i+1) with respect to p
+        if not hasattr(self, "_dfdp_const"):
+            self._dfdp_const = self.alpha * self.W_in[:, -self.N_param_dim :].multiply(
                 1.0 / self.norm_p[1]
             )
-        return self._drdp_const
+            self._dfdp_const = self._dfdp_const.toarray()
+        return self._dfdp_const
 
-    def drdp(self, x, x_prev):
+    def dfdp(self, dtanh):
         """Jacobian of the reservoir states with respect to the parameters
-        \partial x(i) / \partial p
+        \partial x(i+1) / \partial p
+
+        x(i+1) = f(x(i),u(i),p)
+        x(i+1) = (1-alpha)*x(i)+alpha*tanh(W_in*[u(i);p]+W*x(i))
+
         Args:
-        x: reservoir states at time i+1, x(i+1)
+        dtanh: derivative of tanh at x(i+1), x(i)
+
         Returns:
-        drdp: csr_matrix?
+        dfdp: csr_matrix
         """
-        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
-        dtanh = 1.0 - x_tilde**2
-        dtanh = dtanh[:, None]
-        drdp = self.drdp_const.multiply(dtanh)
-        return drdp
+        # gradient of x(i+1) with respect to p
+        dfdp = np.multiply(self.dfdp_const, dtanh)
+        return dfdp
+
+    def dydf_r1(self, N_g, x=None):
+        return self.W_out[: self.N_reservoir, : 2 * N_g].T
+
+    def dydf_r2(self, N_g, x):
+        # derivative of x**2 terms
+        df = np.ones(self.N_reservoir)
+        df[1::2] = 2 * x[1::2]
+        return np.multiply(self.W_out[: self.N_reservoir, : 2 * N_g].T, df)
+
+    @property
+    def dydf(self):
+        # gradient of output galerkin amplitudes with respect to
+        # reservoir states
+        if not hasattr(self, "_dydf"):
+            if self.r2_mode:
+                self._dydf = self.dydf_r2
+            else:
+                self._dydf = self.dydf_r1
+        return self._dydf
+
+    def direct_sensitivity(self, X, Y, N, N_g):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using DIRECT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdp: adjoint sensitivity to parameters
+        """
+        # initialize direct variables, dx(i+1)/dp
+        # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
+        q = np.zeros((N + 1, self.N_reservoir, self.N_param_dim))
+
+        # initialize sensitivity,
+        dJdp = np.zeros(self.N_param_dim)
+
+        for i in np.arange(1, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # partial derivative with respect to parameters
+            dfdp = self.dfdp(dtanh)
+
+            # jacobian of the reservoir dynamics
+            jac = self.jac(dtanh, X[i - 1, :])
+
+            # integrate direct variables forwards in time
+            q[i] = dfdp + np.dot(jac, q[i - 1])
+
+            # get galerkin amplitudes
+            y_galerkin = Y[i, : 2 * N_g]
+
+            # gradient of objective with respect to reservoir states
+            dydf = self.dydf(N_g, X[i, :])
+            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf)
+
+            # sensitivity to parameters
+            dJdp += np.dot(dJdf, q[i])
+
+        return dJdp
+
+    def adjoint_sensitivity(self, X, Y, N, N_g):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using ADJOINT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdp: adjoint sensitivity to parameters
+        """
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # initialize sensitivity
+        dJdp = np.zeros(self.N_param_dim)
+
+        # integrate backwards
+        # predict galerkin amplitudes
+        y_galerkin = Y[N, : 2 * N_g]
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(N_g, X[N, :])
+        v[N] = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # partial derivative with respect to parameters
+            dfdp = self.dfdp(dtanh)
+
+            # sensitivity to parameters
+            dJdp += np.dot(v[i], dfdp)
+
+            # get galerkin amplitudes
+            y_galerkin = Y[i - 1, : 2 * N_g]
+
+            # gradient of objective with respect to reservoir states
+            dydf = self.dydf(N_g, X[i - 1, :])
+            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+
+            # jacobian of the reservoir dynamics
+            jac = self.jac(dtanh, X[i - 1, :])
+
+            # integrate adjoint variables backwards in time
+            v[i - 1] = np.dot(jac.T, v[i]) + dJdf
+
+        return dJdp
+
+    # def adjoint_sensitivity_fast(self, X, Y, N, N_g):
+    #     # precalculate
+    #     DTANH = self.dtanh(X[1:N+1,:],X[0:N,:]).T
+
+    #     if not self.r2_mode:
+    #         DFDX_U = np.einsum('ij,jk -> ijk',self.dfdu_dudx_const,DTANH)
+
+    #     DFDX_X = np.repeat(self.dfdx_x_const.toarray()[:,:,None],N, axis = 2)
+    #     if not self.input_only_mode:
+    #         DFDX_X = self.alpha*np.einsum('ij,jt -> ijt',self.W.toarray(),DTANH) + DFDX_X
+
+    #     JAC = DFDX_U + DFDX_X
+
+    #     # initialize adjoint variables
+    #     v = np.zeros((N+1, self.N_reservoir))
+
+    #     # initialize sensitivity
+    #     dJdp = np.zeros(self.N_param_dim)
+
+    #     # integrate backwards
+    #     # predict galerkin amplitudes
+    #     y_galerkin = Y[N, :2*N_g]
+
+    #     # terminal condition,
+    #     # i.e. gradient of the objective at the terminal state
+    #     dydf = self.dydf(N_g, X[N,:])
+    #     v[N] = (1/N)*1/2*np.dot(y_galerkin, dydf).T
+
+    #     for i in np.arange(N, 0, -1):
+    #         dtanh = DTANH[:,i-1]
+
+    #         # partial derivative with respect to parameters
+    #         dfdp = self.dfdp(dtanh)
+
+    #         # sensitivity to parameters
+    #         dJdp += np.dot(v[i], dfdp)
+
+    #         # get galerkin amplitudes
+    #         y_galerkin = Y[i-1, :2*N_g]
+
+    #         # gradient of objective with respect to reservoir states
+    #         dydf = self.dydf(N_g, X[i-1,:])
+    #         dJdf = (1/N)*1/2*np.dot(y_galerkin, dydf).T
+
+    #         # jacobian of the reservoir dynamics
+    #         jac = JAC[:,:,i-1]
+
+    #         # integrate adjoint variables backwards in time
+    #         v[i-1] = np.dot(jac.T,v[i]) + dJdf
+
+    #     return dJdp
+
+    def finite_difference_sensitivity(self, X, P, N, N_g, h=1e-5):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using CENTRAL FINITE DIFFERENCES
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+            h: perturbation
+
+        Returns:
+            dJdp: numerical sensitivity to parameters
+        """
+        # initialize sensitivity
+        dJdp = np.zeros((self.N_param_dim))
+
+        # central finite difference
+        # perturbed by h
+        for i in range(self.N_param_dim):
+            P_left = P.copy()
+            P_left[:, i] -= h
+            P_right = P.copy()
+            P_right[:, i] += h
+            _, Y_left = self.closed_loop(X[0, :], N, P_left)
+            _, Y_right = self.closed_loop(X[0, :], N, P_right)
+            J_left = 1 / 4 * np.mean(np.sum(Y_left[1:, 0 : 2 * N_g] ** 2, axis=1))
+            J_right = 1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * N_g] ** 2, axis=1))
+            dJdp[i] = (J_right - J_left) / (2 * h)
+
+        return dJdp

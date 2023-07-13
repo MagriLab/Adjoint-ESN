@@ -44,7 +44,10 @@ class RijkeESN(ESN):
     ):
 
         self.verbose = verbose
-        self.r2_mode = r2_mode
+        if r2_mode == True:
+            print("r2 mode not implemented, setting to False")
+        self.r2_mode = False
+
         self.input_only_mode = input_only_mode
 
         ## Hyperparameters
@@ -111,7 +114,7 @@ class RijkeESN(ESN):
     @tau.setter
     def tau(self, new_tau):
         self._tau = new_tau
-        self.N_tau = int(self.tau / self.dt)
+        self.N_tau = int(np.round(self.tau / self.dt))
         return
 
     @property
@@ -287,42 +290,41 @@ class RijkeESN(ESN):
     #     return W_out
 
     @property
-    def dfdr_tau_const(self):
-        if not hasattr(self, "_dfdr_tau_const"):
+    def dfdx_tau_const(self):
+        if not hasattr(self, "_dfdx_tau_const"):
             j = np.arange(1, self.N_g + 1)
             modes = np.cos(j * np.pi * self.x_f)
             modes = np.hstack((modes, np.zeros(self.N_g)))
             W_out_modes = np.dot(self.W_out[: self.N_reservoir, :], modes)[:, None].T
-            self._dfdr_tau_const = W_out_modes
-        return self._dfdr_tau_const
+            self._dfdx_tau_const = W_out_modes
+        return self._dfdx_tau_const
 
-    def jac_tau(self, x, x_prev, u_f_tau):
+    def jac_tau(self, dtanh, u_f_tau):
         """Jacobian of the reservoir states with respect to the tau delayed
         reservoir states
         Args:
-        x: reservoir states at time i+1, x(i+1)
-        Returns:
-        dfdr_tau: jacobian of the reservoir states, csr_matrix
-        """
-        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
-        dtanh = 1.0 - x_tilde**2
-        dtanh = dtanh[:, None]
+        dtanh: derivative of tanh at x(i+1), x(i)
 
+        Returns:
+        dfdx_tau: jacobian of the reservoir states
+        """
+        # derivative of delayed velocity
         du_f_tau = np.zeros(self.u_f_order)
         for order in range(self.u_f_order):
             du_f_tau[order] = (order + 1) * u_f_tau**order
 
-        drdu_f_tau = self.drdu_f_tau_const.dot(du_f_tau)[:, None]
+        dfdu_f_tau = self.dfdu_f_tau_const.dot(du_f_tau)[:, None]
 
-        dfdu_f_tau = np.matmul(drdu_f_tau, self.dfdr_tau_const)
+        # derivative with respect to delayed reservoir states
+        dfdx_tau = np.matmul(dfdu_f_tau, self.dfdx_tau_const)
 
-        dfdr_tau = np.multiply(dfdu_f_tau, dtanh)
-        return dfdr_tau
+        dfdx_tau = np.multiply(dfdx_tau, dtanh)
+        return dfdx_tau
 
     @property
-    def drdu_f_tau_const(self):
-        if not hasattr(self, "_drdu_f_tau_const"):
-            self._drdu_f_tau_const = self.alpha * self.W_in[
+    def dfdu_f_tau_const(self):
+        if not hasattr(self, "_dfdu_f_tau_const"):
+            self._dfdu_f_tau_const = self.alpha * self.W_in[
                 :, -self.N_param_dim - self.u_f_order : -self.N_param_dim
             ].multiply(
                 1.0
@@ -330,26 +332,270 @@ class RijkeESN(ESN):
                     -self.N_param_dim - self.u_f_order : -self.N_param_dim
                 ]
             )
-        return self._drdu_f_tau_const
+        return self._dfdu_f_tau_const
 
-    def drdu_f_tau(self, x, x_prev, u_f_tau):
-        """Jacobian of the reservoir states with respect to the parameters
-        \partial x(i) / \partial p
+    def dfdu_f_tau(self, dtanh, u_f_tau):
+        """Gradient of the reservoir states with respect to delayed velocity
         Args:
-        x: reservoir states at time i+1, x(i+1)
-        Returns:
-        drdu_f_tau: csr_matrix?
-        """
-        x_tilde = (x - (1 - self.alpha) * x_prev) / self.alpha
-        dtanh = 1.0 - x_tilde**2
-        dtanh = dtanh[:, None]
+        dtanh:
 
+        Returns:
+        dfdu_f_tau
+        """
         du_f_tau = np.zeros(self.u_f_order)
         for order in range(self.u_f_order):
             du_f_tau[order] = (order + 1) * u_f_tau**order
 
-        drdu_f_tau_ = self.drdu_f_tau_const.dot(du_f_tau)[:, None]
+        dfdu_f_tau_ = self.dfdu_f_tau_const.dot(du_f_tau)[:, None]
 
-        drdu_f_tau = np.multiply(drdu_f_tau_, dtanh)
+        dfdu_f_tau = np.multiply(dfdu_f_tau_, dtanh)
 
-        return drdu_f_tau
+        return dfdu_f_tau
+
+    def direct_sensitivity(self, X, Y, N, X_past):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using DIRECT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdp: adjoint sensitivity to parameters
+        """
+        # initialize direct variables, dx(i+1)/dp
+        # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
+        # we add time delay, tau as a parameter
+        q = np.zeros((N + 1, self.N_reservoir, self.N_param_dim + 1))
+
+        # initialize sensitivity,
+        dJdp = np.zeros(self.N_param_dim + 1)
+
+        # stack with the past
+        XX = np.vstack((X_past[-self.N_tau - 1 : -1, :], X))
+
+        for i in np.arange(1, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # partial derivative with respect to parameters
+            dfdbeta = self.dfdp(dtanh)
+
+            # get tau sensitivity via finite difference
+            x_aug_left = self.before_readout(XX[i, :])
+            x_aug = self.before_readout(XX[i - 1, :])
+
+            eta_tau_left = np.dot(x_aug_left, self.W_out)[0 : self.N_g]
+            eta_tau = np.dot(x_aug, self.W_out)[0 : self.N_g]
+
+            u_f_tau_left = Rijke.toVelocity(
+                N_g=self.N_g, eta=eta_tau_left, x=np.array([self.x_f])
+            )
+            u_f_tau = Rijke.toVelocity(
+                N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
+            )
+            # gradient of the delayed velocity with respect to tau
+            # backward finite difference
+            du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
+
+            dfdu_f_tau = self.dfdu_f_tau(dtanh, u_f_tau)
+
+            # tau sensitivity given by chain rule
+            dfdtau = dfdu_f_tau * du_f_tau_dtau
+
+            # stack the parameter sensitivities
+            dfdp = np.hstack((dfdbeta, dfdtau))
+
+            # integrate direct variables forwards in time
+            jac = self.jac(dtanh, X[i - 1, :])
+            if i <= self.N_tau:
+                q[i] = dfdp + np.dot(jac, q[i - 1])
+            # depends on the past
+            elif i > self.N_tau:
+                jac_tau = self.jac_tau(dtanh, u_f_tau)
+                q[i] = (
+                    dfdp
+                    + np.dot(jac, q[i - 1])
+                    + np.dot(jac_tau, q[i - self.N_tau - 1])
+                )
+
+            # get galerkin amplitudes
+            y_galerkin = Y[i, : 2 * self.N_g]
+
+            # gradient of objective with respect to reservoir states
+            dydf = self.dydf(self.N_g, X[i, :])
+            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf)
+
+            # sensitivity to parameters
+            dJdp += np.dot(dJdf, q[i])
+
+        return dJdp
+
+    def adjoint_sensitivity(self, X, Y, N, X_past):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using ADJOINT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdp: adjoint sensitivity to parameters
+        """
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # initialize sensitivity
+        dJdp = np.zeros(self.N_param_dim + 1)
+
+        # stack with the past
+        XX = np.vstack((X_past[-self.N_tau - 1 : -1, :], X))
+
+        # integrate backwards
+        # predict galerkin amplitudes
+        y_galerkin = Y[N, : 2 * self.N_g]
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(self.N_g, X[N, :])
+        v[N] = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # partial derivative with respect to parameters
+            dfdbeta = self.dfdp(dtanh)
+
+            # get tau sensitivity via finite difference
+            x_aug_left = self.before_readout(XX[i, :])
+            x_aug = self.before_readout(XX[i - 1, :])
+
+            eta_tau_left = np.dot(x_aug_left, self.W_out)[0 : self.N_g]
+            eta_tau = np.dot(x_aug, self.W_out)[0 : self.N_g]
+
+            u_f_tau_left = Rijke.toVelocity(
+                N_g=self.N_g, eta=eta_tau_left, x=np.array([self.x_f])
+            )
+            u_f_tau = Rijke.toVelocity(
+                N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
+            )
+            # gradient of the delayed velocity with respect to tau
+            # backward finite difference
+            du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
+
+            dfdu_f_tau = self.dfdu_f_tau(dtanh, u_f_tau)
+
+            # tau sensitivity given by chain rule
+            dfdtau = dfdu_f_tau * du_f_tau_dtau
+
+            # stack the parameter sensitivities
+            dfdp = np.hstack((dfdbeta, dfdtau))
+
+            # sensitivity to parameters
+            dJdp += np.dot(v[i], dfdp)
+
+            # get galerkin amplitudes
+            y_galerkin = Y[i - 1, : 2 * self.N_g]
+
+            # gradient of objective with respect to reservoir states
+            dydf = self.dydf(self.N_g, X[i - 1, :])
+            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+
+            # jacobian of the reservoir dynamics
+            jac = self.jac(dtanh, X[i - 1, :])
+
+            if i <= N - self.N_tau:
+                # need tau "advanced" velocity (delayed becomes advanced in adjoint)
+                eta_tau_future = y_galerkin[0 : self.N_g]
+                u_f_tau_future = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau_future, x=np.array([self.x_f])
+                )
+
+                dtanh_future = self.dtanh(
+                    X[i + self.N_tau, :], X[i + self.N_tau - 1, :]
+                )[:, None]
+                jac_tau = self.jac_tau(dtanh_future, u_f_tau_future)
+                v[i - 1] = (
+                    np.dot(jac.T, v[i]) + np.dot(jac_tau.T, v[i + self.N_tau]) + dJdf
+                )
+            else:
+                v[i - 1] = np.dot(jac.T, v[i]) + dJdf
+
+        return dJdp
+
+    def finite_difference_sensitivity(self, X, Y, X_tau, P, N, h=1e-5):
+        """Sensitivity of the ESN with respect to the parameters
+        Calculated using CENTRAL FINITE DIFFERENCES
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            X_tau: tau steps past (initial conditions)
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+            h: perturbation
+
+        Returns:
+            dJdp: numerical sensitivity to parameters
+        """
+        # initialize sensitivity
+        dJdp = np.zeros((self.N_param_dim + 1))
+
+        # central finite difference
+        # perturbed by h
+        for i in range(self.N_param_dim):
+            P_left = P.copy()
+            P_left[:, i] -= h
+            P_right = P.copy()
+            P_right[:, i] += h
+            _, Y_left = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_left)
+            _, Y_right = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_right)
+            J_left = 1 / 4 * np.mean(np.sum(Y_left[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+            J_right = (
+                1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+            )
+            dJdp[i] = (J_right - J_left) / (2 * h)
+
+        # tau sensitivity
+        orig_tau = self.tau
+        h_tau = self.dt
+        self.tau = orig_tau - h_tau
+        _, Y_tau_left = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P)
+        J_tau_left = (
+            1 / 4 * np.mean(np.sum(Y_tau_left[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+        )
+
+        self.tau = orig_tau + h_tau
+        _, Y_tau_right = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P)
+        J_tau_right = (
+            1 / 4 * np.mean(np.sum(Y_tau_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+        )
+
+        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+        dJdp_backward = (J - J_tau_left) / (h_tau)
+        dJdp_forward = (J_tau_right - J) / (h_tau)
+        dJdp_central = (J_tau_right - J_tau_left) / (2 * h_tau)
+
+        dJdp[-1] = dJdp_central
+        print("J ESN = ", J)
+        print("J tau left ESN = ", J_tau_left)
+        print("J tau right ESN = ", J_tau_right)
+
+        print("dJdp backward = ", dJdp_backward)
+        print("dJdp forward  = ", dJdp_forward)
+        print("dJdp central = ", dJdp_central)
+        # set tau back to the original value
+        self.tau = orig_tau
+        return dJdp
