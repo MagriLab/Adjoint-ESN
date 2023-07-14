@@ -352,6 +352,22 @@ class RijkeESN(ESN):
 
         return dfdu_f_tau
 
+    def reset_grad_attrs(self):
+        # reset the attributes
+        attr_list = [
+            "_dfdu_const",
+            "_dudx_const",
+            "_dfdu_dudx_const",
+            "_dfdx_x_const",
+            "_dfdx_u",
+            "_dfdp_const",
+            "_dydf" "_dfdx_tau_const",
+            "_dfdu_f_tau_const",
+        ]
+        for attr in attr_list:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
     def direct_sensitivity(self, X, Y, N, X_past):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
@@ -368,6 +384,9 @@ class RijkeESN(ESN):
         Returns:
             dJdp: adjoint sensitivity to parameters
         """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
         # we add time delay, tau as a parameter
@@ -451,6 +470,9 @@ class RijkeESN(ESN):
         Returns:
             dJdp: adjoint sensitivity to parameters
         """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
 

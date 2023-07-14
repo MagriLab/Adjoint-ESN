@@ -590,10 +590,6 @@ class ESN:
     #    jacobian =  np.matmul(diag_mat,const_jac_a) + np.matmul(diag_mat,const_jac_b)
     #    return jacobian
 
-    # @TODO: these properties are fixed once they are set,
-    # meaning even if the ESN is retrained, their values don't change
-    # leads to wrong Jacobian being used for calculations
-
     @property
     def dfdu_const(self):
         # constant part of gradient of x(i+1) with respect to u_in(i)
@@ -743,6 +739,21 @@ class ESN:
                 self._dydf = self.dydf_r1
         return self._dydf
 
+    def reset_grad_attrs(self):
+        # reset the attributes
+        attr_list = [
+            "_dfdu_const",
+            "_dudx_const",
+            "_dfdu_dudx_const",
+            "_dfdx_x_const",
+            "_dfdx_u",
+            "_dfdp_const",
+            "_dydf",
+        ]
+        for attr in attr_list:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
     def direct_sensitivity(self, X, Y, N, N_g):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
@@ -759,6 +770,9 @@ class ESN:
         Returns:
             dJdp: adjoint sensitivity to parameters
         """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
         q = np.zeros((N + 1, self.N_reservoir, self.N_param_dim))
@@ -806,6 +820,9 @@ class ESN:
         Returns:
             dJdp: adjoint sensitivity to parameters
         """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
 
