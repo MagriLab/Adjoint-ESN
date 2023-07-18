@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, lil_matrix
 from scipy.sparse.linalg import eigs as sparse_eigs
@@ -914,7 +916,16 @@ class ESN:
 
     #     return dJdp
 
-    def finite_difference_sensitivity(self, X, P, N, N_g, h=1e-5):
+    @staticmethod
+    def finite_differences(J, J_right, J_left, h, method):
+        if method == "forward":
+            return (J_right - J) / (h)
+        elif method == "backward":
+            return (J - J_left) / (h)
+        elif method == "central":
+            return (J_right - J_left) / (2 * h)
+
+    def finite_difference_sensitivity(self, X, Y, P, N, N_g, h=1e-5, method="central"):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using CENTRAL FINITE DIFFERENCES
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -934,7 +945,12 @@ class ESN:
         # initialize sensitivity
         dJdp = np.zeros((self.N_param_dim))
 
-        # central finite difference
+        # compute the energy of the base
+        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * N_g] ** 2, axis=1))
+
+        # define which finite difference method to use
+        finite_difference = partial(self.finite_differences, method=method)
+
         # perturbed by h
         for i in range(self.N_param_dim):
             P_left = P.copy()
@@ -945,6 +961,7 @@ class ESN:
             _, Y_right = self.closed_loop(X[0, :], N, P_right)
             J_left = 1 / 4 * np.mean(np.sum(Y_left[1:, 0 : 2 * N_g] ** 2, axis=1))
             J_right = 1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * N_g] ** 2, axis=1))
-            dJdp[i] = (J_right - J_left) / (2 * h)
+
+            dJdp[i] = finite_difference(J, J_right, J_left, h)
 
         return dJdp

@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
@@ -368,7 +370,7 @@ class RijkeESN(ESN):
             if hasattr(self, attr):
                 delattr(self, attr)
 
-    def direct_sensitivity(self, X, Y, N, X_past):
+    def direct_sensitivity(self, X, Y, N, X_past, method="central"):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -417,9 +419,19 @@ class RijkeESN(ESN):
             u_f_tau = Rijke.toVelocity(
                 N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
             )
-            # gradient of the delayed velocity with respect to tau
-            # backward finite difference
-            du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
+            if method == "central" and i > 1:
+                x_aug_right = self.before_readout(XX[i - 2, :])
+                eta_tau_right = np.dot(x_aug_right, self.W_out)[0 : self.N_g]
+                u_f_tau_right = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau_right, x=np.array([self.x_f])
+                )
+                # gradient of the delayed velocity with respect to tau
+                # central finite difference
+                du_f_tau_dtau = (u_f_tau_right - u_f_tau_left) / (2 * self.dt)
+            else:
+                # gradient of the delayed velocity with respect to tau
+                # backward finite difference
+                du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
 
             dfdu_f_tau = self.dfdu_f_tau(dtanh, u_f_tau)
 
@@ -454,7 +466,7 @@ class RijkeESN(ESN):
 
         return dJdp
 
-    def adjoint_sensitivity(self, X, Y, N, X_past):
+    def adjoint_sensitivity(self, X, Y, N, X_past, method="central"):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using ADJOINT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -510,9 +522,20 @@ class RijkeESN(ESN):
             u_f_tau = Rijke.toVelocity(
                 N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
             )
-            # gradient of the delayed velocity with respect to tau
-            # backward finite difference
-            du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
+
+            if method == "central" and i > 1:
+                x_aug_right = self.before_readout(XX[i - 2, :])
+                eta_tau_right = np.dot(x_aug_right, self.W_out)[0 : self.N_g]
+                u_f_tau_right = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau_right, x=np.array([self.x_f])
+                )
+                # gradient of the delayed velocity with respect to tau
+                # central finite difference
+                du_f_tau_dtau = (u_f_tau_right - u_f_tau_left) / (2 * self.dt)
+            else:
+                # gradient of the delayed velocity with respect to tau
+                # backward finite difference
+                du_f_tau_dtau = (u_f_tau - u_f_tau_left) / self.dt
 
             dfdu_f_tau = self.dfdu_f_tau(dtanh, u_f_tau)
 
@@ -554,9 +577,11 @@ class RijkeESN(ESN):
 
         return dJdp
 
-    def finite_difference_sensitivity(self, X, Y, X_tau, P, N, h=1e-5):
+    def finite_difference_sensitivity(
+        self, X, Y, X_tau, P, N, h=1e-5, method="central"
+    ):
         """Sensitivity of the ESN with respect to the parameters
-        Calculated using CENTRAL FINITE DIFFERENCES
+        Calculated using FINITE DIFFERENCES
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
 
         Args:
@@ -568,12 +593,19 @@ class RijkeESN(ESN):
                 assuming outputs are ordered such that the first 2*N_g correspond to the
                 Galerkin amplitudes
             h: perturbation
+            method: finite difference method, "forward","backward" or "central"
 
         Returns:
             dJdp: numerical sensitivity to parameters
         """
         # initialize sensitivity
         dJdp = np.zeros((self.N_param_dim + 1))
+
+        # compute the energy of the base
+        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+
+        # define which finite difference method to use
+        finite_difference = partial(self.finite_differences, method=method)
 
         # central finite difference
         # perturbed by h
@@ -588,7 +620,7 @@ class RijkeESN(ESN):
             J_right = (
                 1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
             )
-            dJdp[i] = (J_right - J_left) / (2 * h)
+            dJdp[i] = finite_difference(J, J_right, J_left, h)
 
         # tau sensitivity
         orig_tau = self.tau
@@ -604,20 +636,9 @@ class RijkeESN(ESN):
         J_tau_right = (
             1 / 4 * np.mean(np.sum(Y_tau_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
         )
+        dJdp[-1] = finite_difference(J, J_tau_right, J_tau_left, h_tau)
 
-        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * self.N_g] ** 2, axis=1))
-        dJdp_backward = (J - J_tau_left) / (h_tau)
-        dJdp_forward = (J_tau_right - J) / (h_tau)
-        dJdp_central = (J_tau_right - J_tau_left) / (2 * h_tau)
-
-        dJdp[-1] = dJdp_central
-        print("J ESN = ", J)
-        print("J tau left ESN = ", J_tau_left)
-        print("J tau right ESN = ", J_tau_right)
-
-        print("dJdp backward = ", dJdp_backward)
-        print("dJdp forward  = ", dJdp_forward)
-        print("dJdp central = ", dJdp_central)
         # set tau back to the original value
         self.tau = orig_tau
+
         return dJdp
