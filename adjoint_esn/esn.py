@@ -35,7 +35,7 @@ class ESN:
         Args:
             reservoir_size: number of neurons in the reservoir
             dimension: dimension of the state space of the input and output
-                #@todo: separate input and output dimensions
+                they must have the same size in order for the closed-loop to work
             parameter_dimension: dimension of the system's bifurcation parameters
             reservoir_connectivity: connectivity of the reservoir weights,
                 how many connections does each neuron have (on average)
@@ -472,7 +472,7 @@ class ESN:
         X, Y = self.closed_loop(x0=x0, N_t=N_t, P=P)
         return X, Y
 
-    def solve_ridge(self, X, Y, tikh, sample_weights):
+    def solve_ridge(self, X, Y, tikh):
         """Solves the ridge regression problem
         Args:
             X: input data
@@ -484,22 +484,9 @@ class ESN:
         # scikit recommends minibatch sgd method for large scale data
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
-        if sample_weights is not None and len(sample_weights) == Y.shape[1]:
-            W_out = np.zeros((X.shape[1], Y.shape[1]))
-            for y_idx in range(Y.shape[1]):
-                reg = Ridge(alpha=tikh, fit_intercept=False)
-                reg.fit(X, Y[:, y_idx], sample_weight=sample_weights[y_idx])
-                W_out[
-                    :, y_idx
-                ] = (
-                    reg.coef_.T
-                )  # we take the transpose because of how the closed loop is structured
-        else:
-            reg = Ridge(alpha=tikh, fit_intercept=False)
-            reg.fit(X, Y, sample_weight=sample_weights)
-            W_out = reg.coef_.T
-        # W_out = np.dot(np.dot(Y.T, X), np.linalg.inv((np.dot(X.T, X)+tikh*np.identity(self.N_reservoir))))
-        # W_out = W_out.T
+        reg = Ridge(alpha=tikh, fit_intercept=False)
+        reg.fit(X, Y)
+        W_out = reg.coef_.T
         return W_out
 
     def reservoir_for_train(self, U_washout, U_train, P_washout=None, P_train=None):
@@ -529,7 +516,6 @@ class ESN:
         P_train=None,
         tikhonov=1e-12,
         train_idx_list=None,
-        sample_weights=None,
     ):
         """Trains ESN and sets the output weights.
         Args:
@@ -567,9 +553,7 @@ class ESN:
 
         # solve for W_out using ridge regression
         self.tikhonov = tikhonov  # set the tikhonov during training
-        self.output_weights = self.solve_ridge(
-            X_train_augmented, Y_train, tikhonov, sample_weights
-        )
+        self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
         return
 
     # Georgios implementation
