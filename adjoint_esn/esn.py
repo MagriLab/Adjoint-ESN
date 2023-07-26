@@ -14,15 +14,15 @@ class ESN:
         self,
         reservoir_size,
         dimension,
-        reservoir_connectivity,
-        input_normalization,
+        reservoir_connectivity=0,
         parameter_dimension=0,
-        parameter_normalization=[np.array([0.0]), np.array([1.0])],
+        input_normalization=None,
+        parameter_normalization=None,
         input_scaling=1.0,
         spectral_radius=1.0,
         leak_factor=1.0,
         input_bias=np.array([]),
-        output_bias=np.array([1.0]),
+        output_bias=np.array([]),
         input_seeds=[None, None, None],
         reservoir_seeds=[None, None],
         verbose=True,
@@ -64,8 +64,6 @@ class ESN:
         self.N_dim = dimension
         self.N_param_dim = parameter_dimension
 
-        self.reservoir_connectivity = reservoir_connectivity
-
         self.leak_factor = leak_factor
 
         ## Biases
@@ -73,7 +71,18 @@ class ESN:
         self.output_bias = output_bias
 
         ## Input normalization
+        if not input_normalization:
+            input_normalization = [None] * 2
+            input_normalization[0] = np.zeros(self.N_dim)
+            input_normalization[1] = np.ones(self.N_dim)
+
         self.input_normalization = input_normalization
+
+        if not parameter_normalization:
+            parameter_normalization = [None] * 2
+            parameter_normalization[0] = np.zeros(self.N_param_dim)
+            parameter_normalization[1] = np.ones(self.N_param_dim)
+
         self.parameter_normalization = parameter_normalization
 
         ## Weights
@@ -92,12 +101,14 @@ class ESN:
         # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
-        self.W_seeds = reservoir_seeds
-        self.W_shape = (self.N_reservoir, self.N_reservoir)
-        self.reservoir_weights_mode = reservoir_weights_mode
-        self.reservoir_weights = self.generate_reservoir_weights()
-        self.spectral_radius = spectral_radius
-        # reservoir weights are automatically scaled if spectral radius is updated
+        if not self.input_only_mode:
+            self.reservoir_connectivity = reservoir_connectivity
+            self.W_seeds = reservoir_seeds
+            self.W_shape = (self.N_reservoir, self.N_reservoir)
+            self.reservoir_weights_mode = reservoir_weights_mode
+            self.reservoir_weights = self.generate_reservoir_weights()
+            self.spectral_radius = spectral_radius
+            # reservoir weights are automatically scaled if spectral radius is updated
 
         # initialise output weights
         self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)
@@ -112,6 +123,8 @@ class ESN:
     @reservoir_connectivity.setter
     def reservoir_connectivity(self, new_reservoir_connectivity):
         # set connectivity
+        if new_reservoir_connectivity <= 0:
+            raise ValueError("Connectivity must be greater than 0.")
         self.connectivity = new_reservoir_connectivity
         # regenerate reservoir with the new connectivity
         if hasattr(self, "W"):
@@ -195,12 +208,16 @@ class ESN:
         """
         if hasattr(self, "sigma_in"):
             # rescale the input matrix
-            self.W_in = (1 / self.sigma_in) * self.W_in
+            self.W_in[:, : -self.N_param_dim] = (1 / self.sigma_in) * self.W_in[
+                :, : -self.N_param_dim
+            ]
         # set input scaling
         self.sigma_in = new_input_scaling
         if self.verbose:
             print("Input weights are rescaled with the new input scaling.")
-        self.W_in = self.sigma_in * self.W_in
+        self.W_in[:, : -self.N_param_dim] = (
+            self.sigma_in * self.W_in[:, : -self.N_param_dim]
+        )
         return
 
     @property
@@ -318,6 +335,8 @@ class ESN:
             )
         elif self.input_weights_mode == "dense":
             return generate_input_weights.dense(self.W_in_shape, self.W_in_seeds)
+        else:
+            raise ValueError("Not valid input weights generator.")
 
     def generate_reservoir_weights(self):
         if self.reservoir_weights_mode == "erdos_renyi1":
@@ -328,6 +347,8 @@ class ESN:
             return generate_reservoir_weights.erdos_renyi2(
                 self.W_shape, self.sparseness, self.W_seeds
             )
+        else:
+            raise ValueError("Not valid reservoir weights generator.")
 
     def step(self, x_prev, u, p=None):
         """Advances ESN time step.

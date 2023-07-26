@@ -1,4 +1,3 @@
-import argparse
 import os
 import sys
 from pathlib import Path
@@ -14,7 +13,9 @@ sys.path.append(root)
 from datetime import datetime
 
 import adjoint_esn.utils.flags as myflags
+from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
+from adjoint_esn.utils import scalers
 from adjoint_esn.utils.enums import eParam, get_eVar
 from adjoint_esn.validation_v2 import validate
 
@@ -27,7 +28,7 @@ _EXPERIMENT_PATH = myflags.DEFINE_path(
 _DATA_DIR = myflags.DEFINE_path(
     "data_dir", None, "Directory to store experiment results"
 )
-flags.mark_flags_as_required(["config", "experiment_path", "data_dir"])
+flags.mark_flags_as_required(["config", "data_dir"])
 
 
 def save_config():
@@ -35,18 +36,12 @@ def save_config():
         FLAGS.config.to_yaml(stream=f)
 
 
-def main(_):
-    # setup random seed
-    np.random.seed(FLAGS.config.random_seed)
-
-    # setup the experiment path
-    FLAGS.experiment_path.mkdir(parents=True, exist_ok=True)
-
-    config = FLAGS.config
+def check_config_errors(config):
     # check for errors in config before saving
     for param_var in config.model.param_vars:
         if param_var not in ["beta", "tau"]:
             raise ValueError(f"Not valid parameter in {config.model.param_vars}")
+
     if set(config.val.hyperparameters.parameter_normalization_mean.keys()) != set(
         config.model.param_vars
     ) or set(config.val.hyperparameters.parameter_normalization_var.keys()) != set(
@@ -55,11 +50,71 @@ def main(_):
         raise ValueError(
             (
                 "Parameters passed in the hyperparameter search for mean and variance "
-                "are not the same as parameters passed in the model. In the current implementation,"
-                "these must be the same, i.e., can't have beta and tau as parameters but only search for "
+                "are not the same as parameters passed in the model. "
+                "In the current implementation, these must be the same, "
+                "i.e., can not have beta and tau as parameters but only search for "
                 "hyperparameters for one of them."
             )
         )
+
+    if (
+        config.model.type == "standard"
+        and "u_f_scaling" in config.val.hyperparameters.keys()
+    ):
+        raise ValueError(
+            "If the model type is standard, "
+            "the hyperparameters should not contain u_f_scaling."
+        )
+
+    if config.model.type == "standard" and (
+        config.model.input_vars != config.model.output_vars
+    ):
+        raise ValueError(
+            "If the model type is standard, "
+            "the input states must be equal to the output states."
+        )
+
+    if config.model.type == "rijke" and "tau" in config.model.param_vars:
+        raise ValueError(
+            "If the model type is rijke, "
+            "tau is implicitly in the model, "
+            "so should not be passed in config.model.param_vars."
+        )
+
+    if config.model.type == "rijke" and config.model.input_vars != "eta_mu_v_tau":
+        raise ValueError(
+            "If the model type is rijke, " "input state must be eta_mu_v_tau."
+        )
+
+    if config.model.type == "rijke" and config.model.output_vars != "eta_mu":
+        raise ValueError("If the model type is rijke, " "output state must be eta_mu.")
+
+    if (
+        config.model.input_only_mode
+        and "spectral_radius" in config.val.hyperparameters.keys()
+    ):
+        raise ValueError(
+            "If the model is in input_only_mode, "
+            "spectral radius should not be a hyperparameter."
+        )
+
+
+def main(_):
+    # setup random seed
+    np.random.seed(FLAGS.config.random_seed)
+
+    config = FLAGS.config
+    check_config_errors(config)
+
+    if not FLAGS.experiment_path:
+        now = datetime.now()
+        dt_string = now.strftime("%Y%m%d_%H%M%S")
+        FLAGS.experiment_path = (
+            Path.cwd() / "local_results" / config.model.type / f"run_{dt_string}"
+        )
+
+    # setup the experiment path
+    FLAGS.experiment_path.mkdir(parents=True, exist_ok=True)
 
     # Make sure not to get the indices of beta and tau mixed up!
     if len(config.model.param_vars) == 2:
@@ -183,11 +238,6 @@ def main(_):
     # dimension of the inputs
     dim = DATA["train"]["u"][0].shape[1]
 
-    # how to scale the inputs (applied apart from the input_scaling)
-    scale = [None] * 2
-    scale[0] = np.zeros(dim)
-    scale[1] = np.ones(dim)
-
     print("Dimension", dim)
     print("Creating hyperparameter search range.", flush=True)
 
@@ -205,10 +255,19 @@ def main(_):
         if name in config.val.hyperparameters.keys()
     ]
 
+    # scale for the hyperparameter range
+    hyp_param_scales = [
+        config.val.hyperparameters[name].scale for name in hyp_param_names_
+    ]
+    for name in repeated_names:
+        if name in hyp_param_names:
+            for param in config.model.param_vars:
+                hyp_param_scales.extend([config.val.hyperparameters[name][param].scale])
+
     # range for hyperparameters
     grid_range = [
-        [config.val.hyperparameters[hyp].min, config.val.hyperparameters[hyp].max]
-        for hyp in hyp_param_names_
+        [config.val.hyperparameters[name].min, config.val.hyperparameters[name].max]
+        for name in hyp_param_names_
     ]
     for name in repeated_names:
         if name in hyp_param_names:
@@ -221,111 +280,71 @@ def main(_):
                         ]
                     ]
                 )
+    # scale the ranges
+    for i in range(len(grid_range)):
+        for j in range(2):
+            scaler = getattr(scalers, hyp_param_scales[i])
+            grid_range[i][j] = scaler(grid_range[i][j])
 
-    print(grid_range)
+    N_washout = pp.get_steps(config.model.washout_time, config.model.network_dt)
+    N_val = pp.get_steps(config.val.fold_time, config.model.network_dt)
+    N_transient = 0
 
-    # # n_grid = [4] * len(grid_range)
-    # N_washout = int(np.round(data_config["t_washout_len"] / data_config["dt"]))
-    # t_val_len = 8
-    # N_val = int(np.round(t_val_len / data_config["dt"]))
-    # # N_fwd = int(np.round(2 * data_config["t_washout_len"] / data_config["dt"]))
-    # N_transient = 0
-    # noise_std = args.noise_std
-    # n_folds = args.n_folds
-    # n_realisations = args.n_realisations
-    # ESN_dict = {
-    #     "reservoir_size": args.reservoir_size,
-    #     "dimension": dim,
-    #     "parameter_dimension": n_param,
-    #     "reservoir_connectivity": args.connectivity,
-    #     "input_normalization": input_scale,
-    #     "input_bias": input_bias,
-    #     "output_bias": output_bias,
-    #     "r2_mode": r2_mode,
-    # }
-    # for refine in range(args.n_refinements):
-    #     print("Starting validation.", flush=True)
-    #     print("Grid_range", grid_range, flush=True)
-    #     min_dict = validate(
-    #         grid_range,
-    #         hyp_param_names,
-    #         hyp_param_scales,
-    #         n_calls=5,
-    #         n_initial_points=5,
-    #         n_ensemble=1,
-    #         ESN_dict=ESN_dict,
-    #         tikh=args.tikh,
-    #         U_washout_train=U_washout_train,
-    #         U_train=U_train,
-    #         U_val=U_val,
-    #         Y_train=Y_train,
-    #         Y_val=Y_val,
-    #         P_washout_train=P_washout_train,
-    #         P_train=P_train,
-    #         P_val=P_val,
-    #         n_folds=n_folds,
-    #         n_realisations=n_realisations,
-    #         N_washout_steps=N_washout,
-    #         N_val_steps=N_val,
-    #         N_transient_steps=N_transient,
-    #         train_idx_list=train_idx_list,
-    #         val_idx_list=val_idx_list,
-    #     )
+    ESN_dict = {
+        "reservoir_size": config.model.reservoir_size,
+        "parameter_dimension": n_param,
+        "reservoir_connectivity": config.model.connectivity,
+        "r2_mode": config.model.r2_mode,
+        "input_only_mode": config.model.input_only_mode,
+        "input_weights_mode": config.model.input_weights_mode,
+    }
+    if config.model.type == "standard":
+        ESN_dict["dimension"] = dim
+    elif config.model.type == "rijke":
+        ESN_dict["N_g"] = config.simulation.N_g
+        ESN_dict["x_f"] = 0.2
+        ESN_dict["dt"] = config.model.network_dt
+        ESN_dict["u_f_order"] = config.model.u_f_order
 
-    #     results = {
-    #         "data_config": data_config,
-    #         "p_train_val_list": p_train_val_list,
-    #         "train_idx_list": train_idx_list,
-    #         "val_idx_list": val_idx_list,
-    #         "hyp_param_names": hyp_param_names,
-    #         "hyp_param_scales": hyp_param_scales,
-    #         "hyp_grid_range": grid_range,
-    #         "ESN_dict": ESN_dict,
-    #         "N_washout": N_washout,
-    #         "N_val": N_val,
-    #         "N_transient": N_transient,
-    #         "n_folds": n_folds,
-    #         "noise_std": noise_std,
-    #         "min_dict": min_dict,
-    #     }
-    #     # datetime object containing current date and time
-    #     now = datetime.now()
-    #     dt_string = now.strftime("%Y%m%d%H%M%S")
-    #     save_path = Path(f"src/results/val_run_{dt_string}.pickle")
-    #     print(save_path, flush=True)
-    #     pp.pickle_file(str(save_path.absolute()), results)
+    print("Starting validation.", flush=True)
+    min_dict = validate(
+        grid_range,
+        hyp_param_names,
+        hyp_param_scales,
+        n_calls=config.val.n_calls,
+        n_initial_points=config.val.n_initial_points,
+        ESN_dict=ESN_dict,
+        ESN_type=config.model.type,
+        tikh=config.train.tikhonov,
+        U_washout_train=DATA["train"]["u_washout"],
+        U_train=DATA["train"]["u"],
+        U_val=DATA["val"]["u"],
+        Y_train=DATA["train"]["y"],
+        Y_val=DATA["val"]["y"],
+        P_washout_train=DATA["train"]["p_washout"],
+        P_train=DATA["train"]["p"],
+        P_val=DATA["val"]["p"],
+        n_folds=config.val.n_folds,
+        n_realisations=config.val.n_realisations,
+        N_washout_steps=N_washout,
+        N_val_steps=N_val,
+        N_transient_steps=N_transient,
+        train_idx_list=new_list_train_idx,
+        val_idx_list=new_list_val_idx,
+        p_list=param_list,
+        random_seed=config.random_seed,
+        error_measure=getattr(errors, config.val.error_measure),
+    )
 
-    #     # REFINEMENT
-    #     # range for hyperparameters (spectral radius and input scaling)
-    #     spec_in = (spec_in + min_dict["params"][0][0][0]) / 2
-    #     spec_end = (spec_end + min_dict["params"][0][0][0]) / 2
-    #     in_scal_in = (in_scal_in + np.log10(min_dict["params"][0][0][1])) / 2
-    #     in_scal_end = (in_scal_end + np.log10(min_dict["params"][0][0][1])) / 2
-    #     leak_in = (leak_in + min_dict["params"][0][0][2]) / 2
-    #     leak_end = (leak_end + min_dict["params"][0][0][2]) / 2
-    #     p_norm_mean_in = (
-    #         p_norm_mean_in + min_dict["params"][0][0][3 : 3 + n_param]
-    #     ) / 2
-    #     p_norm_mean_end = (
-    #         p_norm_mean_end + min_dict["params"][0][0][3 : 3 + n_param]
-    #     ) / 2
-    #     p_norm_mean = np.array([p_norm_mean_in, p_norm_mean_end]).T
-    #     p_norm_var_in = (
-    #         p_norm_var_in
-    #         + np.log10(min_dict["params"][0][0][3 + n_param : 3 + 2 * n_param])
-    #     ) / 2
-    #     p_norm_var_end = (
-    #         p_norm_var_end
-    #         + np.log10(min_dict["params"][0][0][3 + n_param : 3 + 2 * n_param])
-    #     ) / 2
-    #     p_norm_var = np.array([p_norm_var_in, p_norm_var_end]).T
-    #     grid_range = [
-    #         [spec_in, spec_end],
-    #         [in_scal_in, in_scal_end],
-    #         [leak_in, leak_end],
-    #     ]
-    #     grid_range.extend(p_norm_mean.tolist())
-    #     grid_range.extend(p_norm_var.tolist())
+    results = {
+        "training_parameters": train_param_list,
+        "validation_parameters": val_param_list,
+        **min_dict,
+    }
+
+    # datetime object containing current date and time
+    print(f"Saving results to {FLAGS.experiment_path}.", flush=True)
+    pp.pickle_file(FLAGS.experiment_path / "results.pickle", results)
     return
 
 

@@ -10,9 +10,8 @@ from skopt.plots import plot_convergence
 from skopt.space import Real
 
 from adjoint_esn.esn import ESN
-from adjoint_esn.input_only_esn import InputOnlyESN
 from adjoint_esn.rijke_esn import RijkeESN
-from adjoint_esn.rijke_input_only_esn import RijkeInputOnlyESN
+from adjoint_esn.utils import errors, reverse_scalers
 
 
 def set_ESN(my_ESN, param_names, param_scales, params):
@@ -28,10 +27,8 @@ def set_ESN(my_ESN, param_names, param_scales, params):
         for new_idx in range(len(param_idx_list)):
             # rescale the parameters according to the given scaling
             param_idx = param_idx_list[new_idx]
-            if param_scales[param_idx] == "uniform":
-                new_param[new_idx] = params[param_idx]
-            elif param_scales[param_idx] == "log10":
-                new_param[new_idx] = 10 ** params[param_idx]
+            reverse_scaler = getattr(reverse_scalers, param_scales[param_idx])
+            new_param[new_idx] = reverse_scaler(params[param_idx])
 
         if len(param_idx_list) == 1:
             new_param = new_param[0]
@@ -63,24 +60,6 @@ def run_gp_optimization(val_fun, search_space, n_calls, n_initial_points, rand_s
     return res
 
 
-def col_mse(y_true, y_pred):
-    return np.mean((y_true - y_pred) ** 2, axis=0)
-
-
-def mse(y_true, y_pred):
-    return np.sum(col_mse(y_true, y_pred))
-
-
-def rmse(y_true, y_pred):
-    return np.sum(np.sqrt(col_mse(y_true, y_pred)))
-
-
-def nrmse(y_true, y_pred):
-    col_maxmin = np.max(y_true, axis=0) - np.min(y_true, axis=0)
-    col_rmse = np.sqrt(col_mse(y_true, y_pred))
-    return np.sum(col_rmse / col_maxmin)
-
-
 def loop(
     params,
     param_names,
@@ -104,18 +83,14 @@ def loop(
     N_trans,
     p_list,
     ESN_type="standard",  # "standard" or "rijke"
+    error_measure=errors.rmse,
 ):
     # initialize a base ESN object with unit input scaling and spectral radius
     # seeds not given, so the random generator creates a different seed each run
     global run_idx
     run_idx += 1
     print("--NEW RUN--", run_idx)
-    for param_name, param, param_scale in zip(param_names, params, param_scales):
-        if param_scale == "uniform":
-            print(param_name, param)
-        elif param_scale == "log10":
-            print(param_name, 10**param)
-    print("\n")
+
     realisation_error = np.zeros(n_realisations)
     for real_idx in range(n_realisations):
         print("Realisation:", real_idx)
@@ -129,16 +104,20 @@ def loop(
                 **ESN_dict,
                 verbose=False,
             )
-        elif ESN_type == "standard_input_only":
-            my_ESN = InputOnlyESN(
-                **ESN_dict,
-                verbose=False,
-            )
-        elif ESN_type == "rijke_input_only":
-            my_ESN = RijkeInputOnlyESN(
-                **ESN_dict,
-                verbose=False,
-            )
+
+        for param_name, param, param_scale in zip(param_names, params, param_scales):
+            reverse_scaler = getattr(reverse_scalers, param_scale)
+            print(param_name, reverse_scaler(param))
+            if not hasattr(my_ESN, param_name):
+                raise ValueError(
+                    f"Trying to set a non-existing hyperparameter, {param_name}"
+                )
+
+        print("\n")
+        # avoid setting some non-existing hyperparameter
+        # because setattr won't throw an error, but
+        # will simply create a new attribute with that name
+
         # set the ESN with the given parameters
         set_ESN(my_ESN, param_names, param_scales, params)
 
@@ -163,10 +142,9 @@ def loop(
             # set the time delay for rijke esn
             if ESN_type == "rijke" and p_list.shape[1] == 2:
                 my_ESN.tau = p_list[val_idx, 1]
+            print(my_ESN.tau)
+            print("Val regime:", val_idx_idx)
 
-            print("Val regime:", val_idx)
-            # n_folds_max = int(np.floor((len(U_val[val_idx])-N_washout)/N_val))
-            # n_folds_final = np.min((n_folds_max, n_folds))
             # validate with different folds
             fold_error = np.zeros(n_folds)
 
@@ -199,7 +177,9 @@ def loop(
                 Y_val_pred = Y_val_pred[1:, :]
 
                 # compute error
-                fold_error[fold] = rmse(Y_val_fold[N_trans:], Y_val_pred[N_trans:])
+                fold_error[fold] = error_measure(
+                    Y_val_fold[N_trans:], Y_val_pred[N_trans:]
+                )
                 # print("Fold:", fold,", fold error: ", fold_error[fold])
             # average over intervals
             val_error[val_idx_idx] = np.mean(fold_error)
@@ -224,7 +204,6 @@ def validate(
     param_scales,
     n_calls,
     n_initial_points,
-    n_ensemble,
     ESN_dict,
     tikh,
     U_washout_train,
@@ -244,6 +223,8 @@ def validate(
     val_idx_list,
     p_list,
     ESN_type="standard",
+    random_seed=10,
+    error_measure=errors.rmse,
 ):
 
     n_param = len(param_names)  # number of parameters
@@ -254,62 +235,59 @@ def validate(
     # initialize dictionary to hold the minimum parameters and errors
     n_top = 5
     min_dict = {
-        "params": n_ensemble * [np.zeros((n_top, n_param))],
-        "f": n_ensemble * [np.zeros(n_top)],
+        "f": np.zeros(n_top),
     }
+    for param_name in param_names:
+        min_dict[param_name] = np.zeros(n_top)
 
-    for i in range(n_ensemble):
-        print(f"Running {i+1}/{n_ensemble} of ensemble.")
+    global run_idx
+    run_idx = 0
+    # create the validation function
+    # skopt minimize takes functions with only parameters as args
+    # we create a partial function passing our ESN and other params
+    # which we can then access for training/validation
+    val_fun = partial(
+        loop,
+        param_names=param_names,
+        param_scales=param_scales,
+        ESN_dict=ESN_dict,
+        tikh=tikh,
+        U_washout_train=U_washout_train,
+        U_train=U_train,
+        U_val=U_val,
+        Y_train=Y_train,
+        Y_val=Y_val,
+        P_washout_train=P_washout_train,
+        P_train=P_train,
+        P_val=P_val,
+        train_idx_list=train_idx_list,
+        val_idx_list=val_idx_list,
+        n_folds=n_folds,
+        n_realisations=n_realisations,
+        N_washout=N_washout_steps,
+        N_val=N_val_steps,
+        N_trans=N_transient_steps,
+        ESN_type=ESN_type,
+        p_list=p_list,
+        error_measure=error_measure,
+    )
 
-        global run_idx
-        run_idx = 0
-        # create the validation function
-        # skopt minimize takes functions with only parameters as args
-        # we create a partial function passing our ESN and other params
-        # which we can then access for training/validation
-        val_fun = partial(
-            loop,
-            param_names=param_names,
-            param_scales=param_scales,
-            ESN_dict=ESN_dict,
-            tikh=tikh,
-            U_washout_train=U_washout_train,
-            U_train=U_train,
-            U_val=U_val,
-            Y_train=Y_train,
-            Y_val=Y_val,
-            P_washout_train=P_washout_train,
-            P_train=P_train,
-            P_val=P_val,
-            train_idx_list=train_idx_list,
-            val_idx_list=val_idx_list,
-            n_folds=n_folds,
-            n_realisations=n_realisations,
-            N_washout=N_washout_steps,
-            N_val=N_val_steps,
-            N_trans=N_transient_steps,
-            ESN_type=ESN_type,
-            p_list=p_list,
-        )
+    res = run_gp_optimization(
+        val_fun, search_space, n_calls, n_initial_points, rand_state=random_seed
+    )
+    # find the top 5 parameters
+    min_idx_list = res.func_vals.argsort()[:n_top]
 
-        res = run_gp_optimization(
-            val_fun, search_space, n_calls, n_initial_points, rand_state=i
-        )
-        # find the top 5 parameters
-        min_idx_list = res.func_vals.argsort()[:n_top]
+    # save the best parameters
+    for j, min_idx in enumerate(min_idx_list):
+        for param_idx, param_name in enumerate(param_names):
+            # rescale the parameters according to the given scaling
+            reverse_scaler = getattr(reverse_scalers, param_scales[param_idx])
+            new_param = reverse_scaler(res.x_iters[min_idx][param_idx])
+            min_dict[param_name][j] = new_param
 
-        # save the best parameters
-        for j, min_idx in enumerate(min_idx_list):
-            for param_idx in range(n_param):
-                # rescale the parameters according to the given scaling
-                if param_scales[param_idx] == "uniform":
-                    new_param = res.x_iters[min_idx][param_idx]
-                elif param_scales[param_idx] == "log10":
-                    new_param = 10 ** res.x_iters[min_idx][param_idx]
-                min_dict["params"][i][j, param_idx] = new_param
-
-            min_dict["f"][i][j] = res.func_vals[min_idx]
-        min_dict["tikh"] = tikh
-        print(min_dict)
+        min_dict["f"][j] = res.func_vals[min_idx]
+    min_dict["tikh"] = tikh
+    print(min_dict)
 
     return min_dict

@@ -9,3 +9,5 @@ __pycache__/
 images
 images_old
 *.txt
+tmp_*
+local*
