@@ -23,25 +23,25 @@ class RijkeESN(ESN):
         reservoir_size,
         N_g,
         x_f,
-        tau,
         dt,
-        reservoir_connectivity,
-        input_normalization,
+        tau=0.0,
+        reservoir_connectivity=0,
         parameter_dimension=0,
-        parameter_normalization=[np.array([0.0]), np.array([1.0])],
+        input_normalization=None,
+        parameter_normalization=None,
         input_scaling=1.0,
         u_f_scaling=1.0,
         u_f_order=1,
         spectral_radius=1.0,
         leak_factor=1.0,
         input_bias=np.array([]),
-        output_bias=np.array([1.0]),
+        output_bias=np.array([]),
         input_seeds=[None, None, None],
         reservoir_seeds=[None, None],
         verbose=True,
         r2_mode=False,
         input_only_mode=False,
-        input_weights_mode="sparse_grouped",
+        input_weights_mode="sparse_grouped_rijke_dense",
         reservoir_weights_mode="erdos_renyi2",
     ):
 
@@ -76,7 +76,18 @@ class RijkeESN(ESN):
         self.output_bias = output_bias
 
         ## Input normalization
+        if not input_normalization:
+            input_normalization = [None] * 2
+            input_normalization[0] = np.zeros(self.N_dim + self.u_f_order)
+            input_normalization[1] = np.ones(self.N_dim + self.u_f_order)
+
         self.input_normalization = input_normalization
+
+        if not parameter_normalization:
+            parameter_normalization = [None] * 2
+            parameter_normalization[0] = np.zeros(self.N_param_dim)
+            parameter_normalization[1] = np.ones(self.N_param_dim)
+
         self.parameter_normalization = parameter_normalization
 
         ## Weights
@@ -96,12 +107,14 @@ class RijkeESN(ESN):
         # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
-        self.W_seeds = reservoir_seeds
-        self.W_shape = (self.N_reservoir, self.N_reservoir)
-        self.reservoir_weights_mode = reservoir_weights_mode
-        self.reservoir_weights = self.generate_reservoir_weights()
-        self.spectral_radius = spectral_radius
-        # reservoir weights are automatically scaled if spectral radius is updated
+        if not self.input_only_mode:
+            self.reservoir_connectivity = reservoir_connectivity
+            self.W_seeds = reservoir_seeds
+            self.W_shape = (self.N_reservoir, self.N_reservoir)
+            self.reservoir_weights_mode = reservoir_weights_mode
+            self.reservoir_weights = self.generate_reservoir_weights()
+            self.spectral_radius = spectral_radius
+            # reservoir weights are automatically scaled if spectral radius is updated
 
         # initialise output weights
         self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)
@@ -126,6 +139,17 @@ class RijkeESN(ESN):
     @x_f.setter
     def x_f(self, new_x_f):
         self._x_f = new_x_f
+        return
+
+    @property
+    def u_f_order(self):
+        return self._u_f_order
+
+    @u_f_order.setter
+    def u_f_order(self, new_u_f_order):
+        if new_u_f_order <= 0:
+            raise ValueError("Order of the delayed velocity must be greater than 0.")
+        self._u_f_order = new_u_f_order
         return
 
     def generate_input_weights(self):

@@ -14,15 +14,15 @@ class ESN:
         self,
         reservoir_size,
         dimension,
-        reservoir_connectivity,
-        input_normalization,
+        reservoir_connectivity=0,
         parameter_dimension=0,
-        parameter_normalization=[np.array([0.0]), np.array([1.0])],
+        input_normalization=None,
+        parameter_normalization=None,
         input_scaling=1.0,
         spectral_radius=1.0,
         leak_factor=1.0,
         input_bias=np.array([]),
-        output_bias=np.array([1.0]),
+        output_bias=np.array([]),
         input_seeds=[None, None, None],
         reservoir_seeds=[None, None],
         verbose=True,
@@ -35,7 +35,7 @@ class ESN:
         Args:
             reservoir_size: number of neurons in the reservoir
             dimension: dimension of the state space of the input and output
-                #@todo: separate input and output dimensions
+                they must have the same size in order for the closed-loop to work
             parameter_dimension: dimension of the system's bifurcation parameters
             reservoir_connectivity: connectivity of the reservoir weights,
                 how many connections does each neuron have (on average)
@@ -64,8 +64,6 @@ class ESN:
         self.N_dim = dimension
         self.N_param_dim = parameter_dimension
 
-        self.reservoir_connectivity = reservoir_connectivity
-
         self.leak_factor = leak_factor
 
         ## Biases
@@ -73,7 +71,18 @@ class ESN:
         self.output_bias = output_bias
 
         ## Input normalization
+        if not input_normalization:
+            input_normalization = [None] * 2
+            input_normalization[0] = np.zeros(self.N_dim)
+            input_normalization[1] = np.ones(self.N_dim)
+
         self.input_normalization = input_normalization
+
+        if not parameter_normalization:
+            parameter_normalization = [None] * 2
+            parameter_normalization[0] = np.zeros(self.N_param_dim)
+            parameter_normalization[1] = np.ones(self.N_param_dim)
+
         self.parameter_normalization = parameter_normalization
 
         ## Weights
@@ -92,12 +101,14 @@ class ESN:
         # input weights are automatically scaled if input scaling is updated
 
         # initialise reservoir weights
-        self.W_seeds = reservoir_seeds
-        self.W_shape = (self.N_reservoir, self.N_reservoir)
-        self.reservoir_weights_mode = reservoir_weights_mode
-        self.reservoir_weights = self.generate_reservoir_weights()
-        self.spectral_radius = spectral_radius
-        # reservoir weights are automatically scaled if spectral radius is updated
+        if not self.input_only_mode:
+            self.reservoir_connectivity = reservoir_connectivity
+            self.W_seeds = reservoir_seeds
+            self.W_shape = (self.N_reservoir, self.N_reservoir)
+            self.reservoir_weights_mode = reservoir_weights_mode
+            self.reservoir_weights = self.generate_reservoir_weights()
+            self.spectral_radius = spectral_radius
+            # reservoir weights are automatically scaled if spectral radius is updated
 
         # initialise output weights
         self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)
@@ -112,6 +123,8 @@ class ESN:
     @reservoir_connectivity.setter
     def reservoir_connectivity(self, new_reservoir_connectivity):
         # set connectivity
+        if new_reservoir_connectivity <= 0:
+            raise ValueError("Connectivity must be greater than 0.")
         self.connectivity = new_reservoir_connectivity
         # regenerate reservoir with the new connectivity
         if hasattr(self, "W"):
@@ -195,12 +208,16 @@ class ESN:
         """
         if hasattr(self, "sigma_in"):
             # rescale the input matrix
-            self.W_in = (1 / self.sigma_in) * self.W_in
+            self.W_in[:, : -self.N_param_dim] = (1 / self.sigma_in) * self.W_in[
+                :, : -self.N_param_dim
+            ]
         # set input scaling
         self.sigma_in = new_input_scaling
         if self.verbose:
             print("Input weights are rescaled with the new input scaling.")
-        self.W_in = self.sigma_in * self.W_in
+        self.W_in[:, : -self.N_param_dim] = (
+            self.sigma_in * self.W_in[:, : -self.N_param_dim]
+        )
         return
 
     @property
@@ -318,6 +335,8 @@ class ESN:
             )
         elif self.input_weights_mode == "dense":
             return generate_input_weights.dense(self.W_in_shape, self.W_in_seeds)
+        else:
+            raise ValueError("Not valid input weights generator.")
 
     def generate_reservoir_weights(self):
         if self.reservoir_weights_mode == "erdos_renyi1":
@@ -328,6 +347,8 @@ class ESN:
             return generate_reservoir_weights.erdos_renyi2(
                 self.W_shape, self.sparseness, self.W_seeds
             )
+        else:
+            raise ValueError("Not valid reservoir weights generator.")
 
     def step(self, x_prev, u, p=None):
         """Advances ESN time step.
@@ -472,7 +493,7 @@ class ESN:
         X, Y = self.closed_loop(x0=x0, N_t=N_t, P=P)
         return X, Y
 
-    def solve_ridge(self, X, Y, tikh, sample_weights):
+    def solve_ridge(self, X, Y, tikh):
         """Solves the ridge regression problem
         Args:
             X: input data
@@ -484,22 +505,9 @@ class ESN:
         # scikit recommends minibatch sgd method for large scale data
         # Alberto implements the closed-form solution because he doesn't want to recalculate
         # the matmuls for each tikhonov parameter?
-        if sample_weights is not None and len(sample_weights) == Y.shape[1]:
-            W_out = np.zeros((X.shape[1], Y.shape[1]))
-            for y_idx in range(Y.shape[1]):
-                reg = Ridge(alpha=tikh, fit_intercept=False)
-                reg.fit(X, Y[:, y_idx], sample_weight=sample_weights[y_idx])
-                W_out[
-                    :, y_idx
-                ] = (
-                    reg.coef_.T
-                )  # we take the transpose because of how the closed loop is structured
-        else:
-            reg = Ridge(alpha=tikh, fit_intercept=False)
-            reg.fit(X, Y, sample_weight=sample_weights)
-            W_out = reg.coef_.T
-        # W_out = np.dot(np.dot(Y.T, X), np.linalg.inv((np.dot(X.T, X)+tikh*np.identity(self.N_reservoir))))
-        # W_out = W_out.T
+        reg = Ridge(alpha=tikh, fit_intercept=False)
+        reg.fit(X, Y)
+        W_out = reg.coef_.T
         return W_out
 
     def reservoir_for_train(self, U_washout, U_train, P_washout=None, P_train=None):
@@ -529,7 +537,6 @@ class ESN:
         P_train=None,
         tikhonov=1e-12,
         train_idx_list=None,
-        sample_weights=None,
     ):
         """Trains ESN and sets the output weights.
         Args:
@@ -567,9 +574,7 @@ class ESN:
 
         # solve for W_out using ridge regression
         self.tikhonov = tikhonov  # set the tikhonov during training
-        self.output_weights = self.solve_ridge(
-            X_train_augmented, Y_train, tikhonov, sample_weights
-        )
+        self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
         return
 
     # Georgios implementation
