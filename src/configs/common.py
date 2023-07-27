@@ -15,7 +15,7 @@ def get_config():
     config.simulation.sim_time = 800
     config.simulation.sim_dt = 1e-3
     config.simulation.transient_time = 300
-    config.simulation.noise = 0
+    config.simulation.noise_level = 0  # percent
 
     # model configuration
     config.model = ml_collections.ConfigDict()
@@ -37,16 +37,19 @@ def get_config():
     # training configuration
     config.train = ml_collections.ConfigDict()
 
-    config.train.regime_selection = 5  # 'all', integer if random, list if fixed indices
+    config.train.regime_selection = (
+        10  # 'all', integer if random, list if fixed indices
+    )
     config.train.time = 200
     config.train.tikhonov = 1e-3
 
     # validation configuration
     config.val = ml_collections.ConfigDict()
 
-    config.val.regime_selection = 3
+    config.val.validate_on_train = False
+    config.val.regime_selection = 5
     config.val.time = 100
-    config.val.fold_time = 10
+    config.val.fold_time = 8
     config.val.n_folds = 2
     config.val.n_realisations = 1
     config.val.n_calls = 10

@@ -178,6 +178,15 @@ def create_input_output(u, y, t, N_washout, N_loop):
     return u_washout, u_loop, y_loop, t_loop
 
 
+def generate_noise(y, noise_level, random_seed):
+    y_std = np.std(y, axis=0)
+    rnd = np.random.RandomState(seed=random_seed)
+    noise = rnd.normal(
+        loc=np.zeros(y.shape[1]), scale=noise_level / 100 * y_std, size=y.shape
+    )
+    return noise
+
+
 def create_dataset(
     y,
     t,
@@ -191,11 +200,17 @@ def create_dataset(
     param_vars,
     N_g,
     u_f_order,
+    noise_level=0,
+    random_seed=0,
     loop_names=None,
 ):
 
     y, t = upsample(y, t, network_dt)
     y, t = discard_transient(y, t, transient_time)
+
+    # add noise
+    if noise_level > 0:
+        y = y + generate_noise(y, noise_level, random_seed)
 
     # choose input and output states
     uu = choose_state(input_vars)(y, N_g=N_g, u_f_order=u_f_order)

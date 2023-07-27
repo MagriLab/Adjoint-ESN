@@ -142,7 +142,7 @@ def loop(
             # set the time delay for rijke esn
             if ESN_type == "rijke" and p_list.shape[1] == 2:
                 my_ESN.tau = p_list[val_idx, 1]
-            print(my_ESN.tau)
+
             print("Val regime:", val_idx_idx)
 
             # validate with different folds

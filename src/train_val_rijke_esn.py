@@ -162,6 +162,8 @@ def main(_):
     if isinstance(config.val.regime_selection, list):
         list_val_idx = list(set(config.val.regime_selection))
 
+    if config.val.validate_on_train:
+        list_val_idx = np.hstack((list_train_idx, list_val_idx))
     # we only want to load the data in the training and validation
     set_train_val_idx = set(np.hstack((list_train_idx, list_val_idx)))
     # make a dictionary that holds the indices
@@ -201,7 +203,7 @@ def main(_):
             "t": [],
         }
 
-    for p in param_list:
+    for p_idx, p in enumerate(param_list):
         p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
         y_sim, t_sim = pp.load_data(
             beta=p_sim["beta"],
@@ -227,6 +229,8 @@ def main(_):
             param_vars=config.model.param_vars,
             N_g=config.simulation.N_g,
             u_f_order=config.model.u_f_order,
+            noise_level=config.simulation.noise_level,
+            random_seed=config.random_seed + p_idx,
         )
 
         for loop_name in loop_names:
