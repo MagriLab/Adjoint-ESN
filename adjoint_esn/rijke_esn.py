@@ -67,8 +67,6 @@ class RijkeESN(ESN):
         self.N_param_dim = parameter_dimension
         self.u_f_order = u_f_order
 
-        self.reservoir_connectivity = reservoir_connectivity
-
         self.leak_factor = leak_factor
 
         ## Biases
