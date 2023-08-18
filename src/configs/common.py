@@ -29,7 +29,7 @@ def get_config():
 
     config.model.type = "rijke"
     config.model.reservoir_size = 1200
-    config.model.connectivity = 20
+    config.model.connectivity = 0
     config.model.r2_mode = False
     config.model.input_only_mode = True
     config.model.input_weights_mode = "sparse_grouped_rijke_dense"

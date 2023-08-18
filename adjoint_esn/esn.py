@@ -7,6 +7,7 @@ from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
 import adjoint_esn.generate_input_weights as generate_input_weights
 import adjoint_esn.generate_reservoir_weights as generate_reservoir_weights
+from adjoint_esn.utils.discretizations import finite_differences
 
 
 class ESN:
@@ -921,15 +922,6 @@ class ESN:
 
     #     return dJdp
 
-    @staticmethod
-    def finite_differences(J, J_right, J_left, h, method):
-        if method == "forward":
-            return (J_right - J) / (h)
-        elif method == "backward":
-            return (J - J_left) / (h)
-        elif method == "central":
-            return (J_right - J_left) / (2 * h)
-
     def finite_difference_sensitivity(self, X, Y, P, N, N_g, h=1e-5, method="central"):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using CENTRAL FINITE DIFFERENCES
@@ -954,7 +946,7 @@ class ESN:
         J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * N_g] ** 2, axis=1))
 
         # define which finite difference method to use
-        finite_difference = partial(self.finite_differences, method=method)
+        finite_difference = partial(finite_differences, method=method)
 
         # perturbed by h
         for i in range(self.N_param_dim):

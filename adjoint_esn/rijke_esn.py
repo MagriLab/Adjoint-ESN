@@ -6,6 +6,7 @@ from sklearn.linear_model import ElasticNet, Lasso, Ridge
 import adjoint_esn.generate_input_weights as generate_input_weights
 from adjoint_esn.esn import ESN
 from adjoint_esn.rijke_galerkin.solver import Rijke
+from adjoint_esn.utils.discretizations import finite_differences
 
 
 class RijkeESN(ESN):
@@ -627,7 +628,7 @@ class RijkeESN(ESN):
         J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * self.N_g] ** 2, axis=1))
 
         # define which finite difference method to use
-        finite_difference = partial(self.finite_differences, method=method)
+        finite_difference = partial(finite_differences, method=method)
 
         # central finite difference
         # perturbed by h
