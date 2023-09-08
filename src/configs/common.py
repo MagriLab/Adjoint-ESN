@@ -88,6 +88,12 @@ def get_config():
     config.val.hyperparameters.leak_factor.max = 1.0
     config.val.hyperparameters.leak_factor.scale = "uniform"
 
+    # TIKHONOV
+    config.val.hyperparameters.tikhonov = ml_collections.ConfigDict()
+    config.val.hyperparameters.tikhonov.min = 1e-4
+    config.val.hyperparameters.tikhonov.max = 1e-1
+    config.val.hyperparameters.tikhonov.scale = "log10"
+
     # PARAMETER NORMALIZATION
     config.val.hyperparameters.parameter_normalization_mean = (
         ml_collections.ConfigDict()
