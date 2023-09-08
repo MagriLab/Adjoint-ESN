@@ -39,6 +39,7 @@ class RijkeESN(ESN):
         output_bias=np.array([]),
         input_seeds=[None, None, None],
         reservoir_seeds=[None, None],
+        tikhonov=None,
         verbose=True,
         r2_mode=False,
         input_only_mode=False,
@@ -114,6 +115,10 @@ class RijkeESN(ESN):
             self.reservoir_weights = self.generate_reservoir_weights()
             self.spectral_radius = spectral_radius
             # reservoir weights are automatically scaled if spectral radius is updated
+
+        # tikhonov coefficient
+        if tikhonov:
+            self.tikhonov = tikhonov
 
         # initialise output weights
         self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)

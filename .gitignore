@@ -1,14 +1,7 @@
-**/data
-**/data_test
-**/data_new
-**/results
-**/results_new
 **/wandb
 __pycache__/
 .ipynb_checkpoints/
-images
-images_old
-*.txt
 tmp_*
 local*
 paper
+data

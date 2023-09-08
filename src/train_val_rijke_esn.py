@@ -17,7 +17,7 @@ from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils import scalers
 from adjoint_esn.utils.enums import eParam, get_eVar
-from adjoint_esn.validation_v2 import validate
+from adjoint_esn.validation import validate
 
 FLAGS = flags.FLAGS
 
@@ -301,6 +301,7 @@ def main(_):
         "r2_mode": config.model.r2_mode,
         "input_only_mode": config.model.input_only_mode,
         "input_weights_mode": config.model.input_weights_mode,
+        "tikhonov": config.train.tikhonov,
     }
     if config.model.type == "standard":
         ESN_dict["dimension"] = dim
@@ -319,7 +320,6 @@ def main(_):
         n_initial_points=config.val.n_initial_points,
         ESN_dict=ESN_dict,
         ESN_type=config.model.type,
-        tikh=config.train.tikhonov,
         U_washout_train=DATA["train"]["u_washout"],
         U_train=DATA["train"]["u"],
         U_val=DATA["val"]["u"],

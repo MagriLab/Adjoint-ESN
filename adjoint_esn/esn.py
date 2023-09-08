@@ -26,6 +26,7 @@ class ESN:
         output_bias=np.array([]),
         input_seeds=[None, None, None],
         reservoir_seeds=[None, None],
+        tikhonov=None,
         verbose=True,
         r2_mode=False,
         input_only_mode=False,
@@ -110,6 +111,10 @@ class ESN:
             self.reservoir_weights = self.generate_reservoir_weights()
             self.spectral_radius = spectral_radius
             # reservoir weights are automatically scaled if spectral radius is updated
+
+        # tikhonov coefficient
+        if tikhonov:
+            self.tikhonov = tikhonov
 
         # initialise output weights
         self.W_out_shape = (self.N_reservoir + len(self.output_bias), self.N_dim)
@@ -574,8 +579,12 @@ class ESN:
             )
 
         # solve for W_out using ridge regression
-        self.tikhonov = tikhonov  # set the tikhonov during training
-        self.output_weights = self.solve_ridge(X_train_augmented, Y_train, tikhonov)
+        if not self.tikhonov:
+            self.tikhonov = tikhonov  # set the tikhonov during training
+
+        self.output_weights = self.solve_ridge(
+            X_train_augmented, Y_train, self.tikhonov
+        )
         return
 
     # Georgios implementation
