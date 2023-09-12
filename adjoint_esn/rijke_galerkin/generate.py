@@ -20,7 +20,7 @@ def make_dir(path):
         path.with_suffix(".h5")
 
     if path.exists():
-        raise FileExistsError(f"setup_directory() :: {path} already exists.")
+        print(f"setup_directory() :: {path} already exists.")
     path.parent.mkdir(parents=True, exist_ok=True)
     print(path.absolute())
 

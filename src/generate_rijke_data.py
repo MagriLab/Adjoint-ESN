@@ -42,15 +42,15 @@ def run_sim(params):
     beta_name = beta_name.replace(".", "_")
     tau_name = f"{tau:.2f}"
     tau_name = tau_name.replace(".", "_")
-    sim_str = f"src/data_new/rijke_kings_poly_N_g_4_beta_{beta_name}_tau_{tau_name}.h5"
+    sim_str = f"data/rijke_kings_poly_N_g_4_beta_{beta_name}_tau_{tau_name}.h5"
     print(sim_str)
     args_dict = {
         "data_path": Path(sim_str),
-        "grad_adjoint": True,
+        "grad_adjoint": False,
         "dx": None,
         "N_x": None,
         "dt": 1e-3,
-        "simulation_time": 1200,
+        "simulation_time": 2200,
         "transient_time": 200,
         "seed": None,
         "N_g": 4,
@@ -68,8 +68,8 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    tau_list = np.array([0.22])
+    beta_list = np.arange(5.80, 7.31, 0.01)
+    tau_list = np.array([0.2])
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     print(mp.cpu_count())

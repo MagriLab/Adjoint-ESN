@@ -116,6 +116,11 @@ def main(_):
     # setup the experiment path
     FLAGS.experiment_path.mkdir(parents=True, exist_ok=True)
 
+    # redirect print to text file
+    orig_stdout = sys.stdout
+    f = open(FLAGS.experiment_path / "out.txt", "w")
+    sys.stdout = f
+
     # Make sure not to get the indices of beta and tau mixed up!
     if len(config.model.param_vars) == 2:
         config.model.param_vars[eParam.beta] = "beta"
@@ -301,6 +306,7 @@ def main(_):
         "r2_mode": config.model.r2_mode,
         "input_only_mode": config.model.input_only_mode,
         "input_weights_mode": config.model.input_weights_mode,
+        "reservoir_weights_mode": config.model.reservoir_weights_mode,
         "tikhonov": config.train.tikhonov,
     }
     if config.model.type == "standard":
@@ -349,6 +355,10 @@ def main(_):
     # datetime object containing current date and time
     print(f"Saving results to {FLAGS.experiment_path}.", flush=True)
     pp.pickle_file(FLAGS.experiment_path / "results.pickle", results)
+
+    # close text
+    sys.stdout = orig_stdout
+    f.close()
     return
 
 
