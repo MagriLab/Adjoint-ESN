@@ -281,8 +281,12 @@ def validate(
     min_dict = {
         "f": np.zeros(n_top),
     }
-    for param_name in param_names:
-        min_dict[param_name] = np.zeros(n_top)
+    for param_name in set(param_names):
+        param_idx_list = np.where(np.array(param_names) == param_name)[0]
+        if len(param_idx_list) > 1:
+            min_dict[param_name] = np.zeros((n_top, len(param_idx_list)))
+        else:
+            min_dict[param_name] = np.zeros(n_top)
 
     global run_idx
     run_idx = 0
@@ -328,10 +332,18 @@ def validate(
 
     # save the best parameters
     for j, min_idx in enumerate(min_idx_list):
-        for param_idx, param_name in enumerate(param_names):
-            # rescale the parameters according to the given scaling
-            reverse_scaler = getattr(reverse_scalers, param_scales[param_idx])
-            new_param = reverse_scaler(res.x_iters[min_idx][param_idx])
+        for param_name in set(param_names):
+            param_idx_list = np.where(np.array(param_names) == param_name)[0]
+
+            new_param = np.zeros(len(param_idx_list))
+            for new_idx in range(len(param_idx_list)):
+                param_idx = param_idx_list[new_idx]
+                # rescale the parameters according to the given scaling
+                reverse_scaler = getattr(reverse_scalers, param_scales[param_idx])
+                new_param[new_idx] = reverse_scaler(res.x_iters[min_idx][param_idx])
+            if len(param_idx_list) == 1:
+                new_param = new_param[0]
+
             min_dict[param_name][j] = new_param
 
         min_dict["f"][j] = res.func_vals[min_idx]
