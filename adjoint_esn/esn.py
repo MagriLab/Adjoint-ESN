@@ -225,16 +225,23 @@ class ESN:
         """
         if hasattr(self, "sigma_in"):
             # rescale the input matrix
-            self.W_in[:, : -self.N_param_dim] = (1 / self.sigma_in) * self.W_in[
-                :, : -self.N_param_dim
-            ]
+            if self.N_param_dim > 0:
+                self.W_in[:, : -self.N_param_dim] = (1 / self.sigma_in) * self.W_in[
+                    :, : -self.N_param_dim
+                ]
+            else:
+                self.W_in = (1 / self.sigma_in) * self.W_in
+
         # set input scaling
         self.sigma_in = new_input_scaling
         if self.verbose:
             print("Input weights are rescaled with the new input scaling.")
-        self.W_in[:, : -self.N_param_dim] = (
-            self.sigma_in * self.W_in[:, : -self.N_param_dim]
-        )
+        if self.N_param_dim > 0:
+            self.W_in[:, : -self.N_param_dim] = (
+                self.sigma_in * self.W_in[:, : -self.N_param_dim]
+            )
+        else:
+            self.W_in = self.sigma_in * self.W_in
         return
 
     @property

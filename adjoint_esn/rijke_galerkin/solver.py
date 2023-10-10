@@ -240,7 +240,7 @@ class Rijke:
     def dsigmoid(self, u_f_tau):
         return self.beta * np.exp(-u_f_tau) / ((1 + np.exp(-u_f_tau)) ** 2)
 
-    def ode(self, t, y):
+    def ode(self, y, t):
         """Rijke system ode
 
         Galerkin expansion
@@ -287,7 +287,7 @@ class Rijke:
         # calculate J = \int_0^T \tilde{J} simultaneously
         J_tilde = 1 / 4 * np.sum(eta**2 + mu**2)
 
-        dydt = np.hstack([eta_dot, mu_dot, v_dot, J_tilde])
+        dydt = np.hstack([eta_dot, mu_dot, v_dot])
         return dydt
 
     # Following derivatives are used in the calculation of direct and adjoint eqns
@@ -375,6 +375,15 @@ class Rijke:
         dfdy = np.vstack([self.df1_dy, df2_dy, self.df3_dy])
         dFdy = -dfdy
         return dFdy
+
+    def jac(self, y):
+        v = y[2 * self.N_g : self.N_dim]
+
+        u_f_tau_bar = v[-1]
+
+        # linearize system around \bar{u_f}(t-\tau)
+        dFdy = self.dFdy_u_f_tau_bar(u_f_tau_bar)
+        return -dFdy
 
     @property
     def df1_dbeta(self):

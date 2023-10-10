@@ -23,7 +23,7 @@ def write_h5(path, data):
     hf.close()
 
 
-def forward_euler(ddt, u0, t, *args):
+def forward_euler(ddt, u0, t):
     """Integrate using the first order forward euler method
     ddt: ODE that describes the system dynamics, ddt = func(y,t)
     u0: initial conditions
@@ -34,7 +34,30 @@ def forward_euler(ddt, u0, t, *args):
     u[0] = u0
     # integrate
     for i in range(1, len(t)):
-        u[i] = u[i - 1] + (t[i] - t[i - 1]) * ddt(u[i - 1], t[i - 1], *args)
+        u[i] = u[i - 1] + (t[i] - t[i - 1]) * ddt(u[i - 1], t[i - 1])
+    return u
+
+
+def rk4(ddt, u0, t):
+    """Integrate using the 4th order Runge-Kutta method
+    ddt: ODE that describes the system dynamics, ddt = func(y,t)
+    u0: initial conditions
+    t: integration time
+    """
+    # initialize u
+    u = np.empty((len(t), len(u0)))
+    u[0] = u0
+
+    # integrate
+    for i in range(1, len(t)):
+        dt = t[i] - t[i - 1]
+        K1 = ddt(u[i - 1], t[i - 1])
+        K2 = ddt(u[i - 1] + dt * K1 / 2.0, t[i - 1] + dt / 2.0)
+        K3 = ddt(u[i - 1] + dt * K2 / 2.0, t[i - 1] + dt / 2.0)
+        K4 = ddt(u[i - 1] + dt * K3, t[i - 1] + dt)
+
+        u[i] = u[i - 1] + dt * (K1 / 2.0 + K2 + K3 + K4 / 2.0) / 3.0
+
     return u
 
 
@@ -42,6 +65,7 @@ def integrate(dynamical_system, u0, t, integrator="odeint", data_path=None):
     # Dictionary of integrators
     integrators_dict = {
         "forward_euler": forward_euler,
+        "rk4": rk4,
         "odeint": odeint,
     }
     if integrator not in integrators_dict.keys():

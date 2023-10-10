@@ -104,17 +104,17 @@ def loop(
     U_val,
     Y_train,
     Y_val,
-    P_washout_train,
-    P_train,
-    P_val,
-    train_idx_list,
-    val_idx_list,
     n_folds,
     n_realisations,
     N_washout,
     N_val,
     N_trans,
-    p_list,
+    P_washout_train=None,
+    P_train=None,
+    P_val=None,
+    train_idx_list=None,
+    val_idx_list=None,
+    p_list=None,
     ESN_type="standard",  # "standard" or "rijke"
     error_measure=errors.rmse,
 ):
@@ -194,15 +194,19 @@ def loop(
                 U_washout_fold = U_val[val_idx][
                     start_step : start_step + N_washout
                 ].copy()
-                P_washout_fold = P_val[val_idx][
-                    start_step : start_step + N_washout
-                ].copy()
                 Y_val_fold = Y_val[val_idx][
                     start_step + N_washout : start_step + N_washout + N_val
                 ].copy()
-                P_val_fold = P_val[val_idx][
-                    start_step + N_washout : start_step + N_washout + N_val
-                ].copy()
+                if my_ESN.N_param_dim > 0:
+                    P_washout_fold = P_val[val_idx][
+                        start_step : start_step + N_washout
+                    ].copy()
+                    P_val_fold = P_val[val_idx][
+                        start_step + N_washout : start_step + N_washout + N_val
+                    ].copy()
+                else:
+                    P_washout_fold = None
+                    P_val_fold = None
 
                 # predict output validation in closed-loop
                 _, Y_val_pred = my_ESN.closed_loop_with_washout(
@@ -217,7 +221,7 @@ def loop(
                 fold_error[fold] = error_measure(
                     Y_val_fold[N_trans:], Y_val_pred[N_trans:]
                 )
-                # print("Fold:", fold,", fold error: ", fold_error[fold])
+                print("Fold:", fold, ", fold error: ", fold_error[fold])
             # average over intervals
             val_error[val_idx_idx] = np.mean(fold_error)
             print("Val regime error:", val_error[val_idx_idx])
@@ -247,17 +251,17 @@ def validate(
     U_val,
     Y_train,
     Y_val,
-    P_washout_train,
-    P_train,
-    P_val,
     n_folds,
     n_realisations,
     N_washout_steps,
     N_val_steps,
-    N_transient_steps,
-    train_idx_list,
-    val_idx_list,
-    p_list,
+    N_transient_steps=0,
+    P_washout_train=None,
+    P_train=None,
+    P_val=None,
+    train_idx_list=None,
+    val_idx_list=None,
+    p_list=None,
     ESN_type="standard",
     n_grid=None,
     random_seed=10,

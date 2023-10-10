@@ -68,7 +68,7 @@ def main(args):
 
     print("Running simulation.", flush=True)
     # Solve ODE using odeint
-    y = odeint(rjk.ode, y0, t, tfirst=True)
+    y = odeint(rjk.ode, y0, t)
 
     eta = y[:, 0 : rjk.N_g]  # Galerkin variables velocity
     mu = y[:, rjk.N_g : 2 * rjk.N_g]  # Galerkin variables pressure

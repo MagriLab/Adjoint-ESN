@@ -58,6 +58,7 @@ def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
         data_dir / f"rijke_kings_poly_N_g_{N_g}_beta_{beta_name}_tau_{tau_name}.h5"
     )
 
+    run_sim = False
     if data_path.exists():
         # load simulation data
         data_dict = read_h5(data_path)
@@ -65,21 +66,24 @@ def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
         # check the time step
         loaded_sim_dt = data_dict["t"][1] - data_dict["t"][0]
         if not np.equal(loaded_sim_dt, sim_dt):
-            raise ValueError(
+            print(
                 f"The time step of the loaded simulation data is different from the desired one:{loaded_sim_dt}!={sim_dt}"
             )
+            run_sim = True
 
         # check if loaded simulation is long enough
         if sim_time > data_dict["t"][-1]:
-            raise ValueError(
-                f'Simulation not long enough: {sim_time}>{data_dict["t"][-1]}'
-            )
+            print(f'Simulation not long enough: {sim_time}>{data_dict["t"][-1]}')
+            run_sim = True
 
         # reduce the simulation time steps if necessary
         sim_time_steps = get_steps(sim_time, loaded_sim_dt)
         y = data_dict["y"][: sim_time_steps + 1]
         t = data_dict["t"][: sim_time_steps + 1]
     else:
+        run_sim = True
+
+    if run_sim:
         my_rijke = Rijke(
             N_g=N_g,
             N_c=10,
@@ -92,14 +96,14 @@ def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
             damping="modal",
         )
         # run simulation
-        y0 = np.zeros(my_rijke.N_dim + 1)
+        y0 = np.zeros(my_rijke.N_dim)
         y0[0] = 1.0
 
         # temporal grid
         t = np.arange(0, sim_time + sim_dt, sim_dt)
 
         # solve ODE using odeint
-        y = odeint(my_rijke.ode, y0, t, tfirst=True)
+        y = odeint(my_rijke.ode, y0, t)
 
     return y, t
 
