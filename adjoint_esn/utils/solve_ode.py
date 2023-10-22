@@ -23,7 +23,7 @@ def write_h5(path, data):
     hf.close()
 
 
-def forward_euler(ddt, u0, t):
+def forward_euler(ddt, u0, t, args=()):
     """Integrate using the first order forward euler method
     ddt: ODE that describes the system dynamics, ddt = func(y,t)
     u0: initial conditions
@@ -34,11 +34,11 @@ def forward_euler(ddt, u0, t):
     u[0] = u0
     # integrate
     for i in range(1, len(t)):
-        u[i] = u[i - 1] + (t[i] - t[i - 1]) * ddt(u[i - 1], t[i - 1])
+        u[i] = u[i - 1] + (t[i] - t[i - 1]) * ddt(u[i - 1], t[i - 1], *args)
     return u
 
 
-def rk4(ddt, u0, t):
+def rk4(ddt, u0, t, args=()):
     """Integrate using the 4th order Runge-Kutta method
     ddt: ODE that describes the system dynamics, ddt = func(y,t)
     u0: initial conditions
@@ -51,17 +51,17 @@ def rk4(ddt, u0, t):
     # integrate
     for i in range(1, len(t)):
         dt = t[i] - t[i - 1]
-        K1 = ddt(u[i - 1], t[i - 1])
-        K2 = ddt(u[i - 1] + dt * K1 / 2.0, t[i - 1] + dt / 2.0)
-        K3 = ddt(u[i - 1] + dt * K2 / 2.0, t[i - 1] + dt / 2.0)
-        K4 = ddt(u[i - 1] + dt * K3, t[i - 1] + dt)
+        K1 = ddt(u[i - 1], t[i - 1], *args)
+        K2 = ddt(u[i - 1] + dt * K1 / 2.0, t[i - 1] + dt / 2.0, *args)
+        K3 = ddt(u[i - 1] + dt * K2 / 2.0, t[i - 1] + dt / 2.0, *args)
+        K4 = ddt(u[i - 1] + dt * K3, t[i - 1] + dt, *args)
 
         u[i] = u[i - 1] + dt * (K1 / 2.0 + K2 + K3 + K4 / 2.0) / 3.0
 
     return u
 
 
-def integrate(dynamical_system, u0, t, integrator="odeint", data_path=None):
+def integrate(ode, u0, t, integrator="odeint", data_path=None, params=None, args=()):
     # Dictionary of integrators
     integrators_dict = {
         "forward_euler": forward_euler,
@@ -76,7 +76,7 @@ def integrate(dynamical_system, u0, t, integrator="odeint", data_path=None):
     integrator = integrators_dict[integrator]
     # integrate
     print("Running solver.")
-    u = integrator(dynamical_system.ode, u0, t)
+    u = integrator(ode, u0, t, args)
 
     # write to h5 file if data path is given
     if data_path is not None:
@@ -84,7 +84,7 @@ def integrate(dynamical_system, u0, t, integrator="odeint", data_path=None):
         data_dict = {
             "u": u,
             "t": t,
-            "params": dynamical_system.params,
+            "params": params,
         }
         print("Writing to file.")
         write_h5(data_path, data_dict)

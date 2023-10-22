@@ -5,7 +5,8 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from scipy.integrate import odeint
+
+import adjoint_esn.utils.solve_ode as solve_ode
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 sys.path.append(root)
@@ -68,7 +69,7 @@ def main(args):
 
     print("Running simulation.", flush=True)
     # Solve ODE using odeint
-    y = odeint(rjk.ode, y0, t)
+    y = solve_ode.integrate(rjk.ode, y0, t, integrator=args.integrator)
 
     eta = y[:, 0 : rjk.N_g]  # Galerkin variables velocity
     mu = y[:, rjk.N_g : 2 * rjk.N_g]  # Galerkin variables pressure
@@ -77,7 +78,7 @@ def main(args):
 
     # q_dot = y[:, -2]  # heat release rate
 
-    J = 1 / t[-1] * (y[-1, -1] - y[0, -1])  # time-averaged acoustic energy
+    # J = 1 / t[-1] * (y[-1, -1] - y[0, -1])  # time-averaged acoustic energy
 
     data_dict = {
         "N_g": rjk.N_g,
@@ -92,7 +93,7 @@ def main(args):
         "t_transient": args.transient_time,
         "t": t,
         "y": y,
-        "J": J,
+        # "J": J,
     }
 
     if args.grad_adjoint:
@@ -101,12 +102,12 @@ def main(args):
         t_bar = t[N_transient:] - t[N_transient]
         # adjoint problem
         adjT = np.zeros(rjk.N_dim + 2)
-        adj = odeint(
+        adj = solve_ode.integrate(
             rjk.adjoint_ode,
             adjT,
             np.flip(t_bar),
+            integrator=args.integrator,
             args=(t_bar, 1 / args.dt, y_bar),
-            tfirst=True,
         )
         dJ_dbeta = 1 / t_bar[-1] * adj[-1, -2]
         dJ_dtau = 1 / t_bar[-1] * adj[-1, -1]
@@ -137,6 +138,13 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generates Rijke system data using Galerkin decomposition method."
+    )
+
+    parser.add_argument(
+        "--integrator",
+        type=str,
+        default="odeint",
+        help="which integration scheme to use; forward_euler, odeint, or rk4",
     )
 
     parser.add_argument(

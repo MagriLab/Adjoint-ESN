@@ -4,8 +4,8 @@ from itertools import product
 
 import h5py
 import numpy as np
-from scipy.integrate import odeint
 
+import adjoint_esn.utils.solve_ode as solve_ode
 from adjoint_esn.rijke_galerkin.solver import Rijke
 
 
@@ -48,7 +48,9 @@ def get_steps(t, dt):
     return int(np.round(t / dt))
 
 
-def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
+def load_data(
+    beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3, integrator="odeint"
+):
     # construct data path name
     beta_name = f"{beta:.2f}"
     beta_name = beta_name.replace(".", "_")
@@ -76,10 +78,16 @@ def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
             print(f'Simulation not long enough: {sim_time}>{data_dict["t"][-1]}')
             run_sim = True
 
-        # reduce the simulation time steps if necessary
-        sim_time_steps = get_steps(sim_time, loaded_sim_dt)
-        y = data_dict["y"][: sim_time_steps + 1]
-        t = data_dict["t"][: sim_time_steps + 1]
+        # check integrator
+        if integrator != "odeint":
+            print(f"Integrator not odeint, saved data was generated with odeint.")
+            run_sim = True
+
+        if not run_sim:
+            # reduce the simulation time steps if necessary
+            sim_time_steps = get_steps(sim_time, loaded_sim_dt)
+            y = data_dict["y"][: sim_time_steps + 1]
+            t = data_dict["t"][: sim_time_steps + 1]
     else:
         run_sim = True
 
@@ -103,7 +111,7 @@ def load_data(beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3):
         t = np.arange(0, sim_time + sim_dt, sim_dt)
 
         # solve ODE using odeint
-        y = odeint(my_rijke.ode, y0, t)
+        y = solve_ode.integrate(my_rijke.ode, y0, t, integrator)
 
     return y, t
 
@@ -207,8 +215,8 @@ def create_dataset(
     noise_level=0,
     random_seed=0,
     loop_names=None,
+    start_idxs=None,
 ):
-
     y, t = upsample(y, t, network_dt)
     y, t = discard_transient(y, t, transient_time)
 
@@ -229,6 +237,9 @@ def create_dataset(
     data = {}
     start_idx = 0
     for loop_idx, N_loop in enumerate(N_loops):
+        if start_idxs is not None:
+            start_idx = start_idxs[loop_idx]
+
         # get washout and loop data
         u_washout, u_loop, y_loop, t_loop = create_input_output(
             uu[start_idx:], yy[start_idx:], t[start_idx:], N_washout, N_loop + 1
@@ -251,7 +262,8 @@ def create_dataset(
             "t": t_loop,
         }
 
-        start_idx += N_washout + N_loop
+        if start_idxs is None:
+            start_idx += N_washout + N_loop
 
     # add something for the case when len(N_loop) = 0?
     return data

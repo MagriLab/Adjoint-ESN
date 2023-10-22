@@ -447,7 +447,7 @@ class Rijke:
             vq = v[j, :] * (1 - xx) + v[j + 1, :] * xx
         return vq
 
-    def direct_ode(self, t, dir, t_bar, inv_dt, y_bar):
+    def direct_ode(self, dir, t, t_bar, inv_dt, y_bar):
         """Solve the direct problem to find the gradient dJ/dp
 
         dq/dt = -dF/dy*q-dF/dp
@@ -498,7 +498,7 @@ class Rijke:
         ddir_dt = np.hstack([dqdt, dJ_dbeta_dt, dJ_dtau_dt])
         return ddir_dt
 
-    def adjoint_ode(self, t, adj, t_bar, inv_dt, y_bar):
+    def adjoint_ode(self, adj, t, t_bar, inv_dt, y_bar):
         """Solve the adjoint problem to find the gradient dJ/dp
         dq^+/dt = q^+'*dF/dy-dJ/dy
         dJ/dp = 1/T int_0^T (-q^+ dF/dp)dt
