@@ -394,7 +394,7 @@ class ESN:
         # augment the input with the parameters
         if self.N_param_dim > 0:
             u_augmented = np.hstack(
-                (u_augmented, (p - self.norm_p[0]) / self.norm_p[1])
+                (u_augmented, (p - self.norm_p[0]) * self.norm_p[1])
             )
 
         # update the reservoir
@@ -732,7 +732,7 @@ class ESN:
         # constant part of gradient of x(i+1) with respect to p
         if not hasattr(self, "_dfdp_const"):
             self._dfdp_const = self.alpha * self.W_in[:, -self.N_param_dim :].multiply(
-                1.0 / self.norm_p[1]
+                1.0 * self.norm_p[1]
             )
             self._dfdp_const = self._dfdp_const.toarray()
         return self._dfdp_const
