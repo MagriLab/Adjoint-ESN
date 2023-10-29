@@ -221,7 +221,7 @@ def loop(
                 fold_error[fold] = error_measure(
                     Y_val_fold[N_trans:], Y_val_pred[N_trans:]
                 )
-                print("Fold:", fold, ", fold error: ", fold_error[fold])
+                # print("Fold:", fold, ", fold error: ", fold_error[fold])
             # average over intervals
             val_error[val_idx_idx] = np.mean(fold_error)
             print("Val regime error:", val_error[val_idx_idx])
@@ -229,7 +229,7 @@ def loop(
             # also consistent over the folds, can minimize mean and standard deviation or max-min
             # sum()+diff()
         # sum over validation regimes
-        realisation_error[real_idx] = np.sum(val_error)
+        realisation_error[real_idx] = np.mean(val_error)
         print("Realisation error:", realisation_error[real_idx])
         print("\n")
     # average over realisations
@@ -267,7 +267,6 @@ def validate(
     random_seed=10,
     error_measure=errors.rmse,
 ):
-
     n_param = len(param_names)  # number of parameters
 
     # ranges for hyperparameters
