@@ -21,7 +21,7 @@ def create_ESN(ESN_dict, model_type, hyp_param_names, hyp_param_scales, hyp_para
     return my_ESN
 
 
-def get_ESN_properties_from_results(config, results, dim):
+def get_ESN_properties_from_results(config, results, dim, top_idx = 0):
     # which system parameter is passed to the ESN
     param_vars = config.model.param_vars
 
@@ -45,7 +45,6 @@ def get_ESN_properties_from_results(config, results, dim):
 
     print("System dimension: ", dim)
 
-    top_idx = 0
     hyp_param_names = []
     hyp_params = []
     for name in results.keys():

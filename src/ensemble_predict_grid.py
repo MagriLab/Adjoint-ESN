@@ -21,14 +21,14 @@ def main(args):
     # options
     test_time = 200
     test_loop_time = 20
-    n_folds = 3
+    n_folds = 5
     seed = 0  # random seed for fold start idxs
 
-    beta_list = np.arange(1.0, 6.0, 1.0)
-    tau_list = np.arange(0.1, 0.35, 0.05)
+    beta_list = np.arange(0.5,7.5,0.25)
+    tau_list = np.arange(0.05, 0.35, 0.01)
 
     # create an ensemble of ESNs to make predictions
-    n_ensemble = 2
+    n_ensemble = 5
 
     # make a list of test parameters
     test_param_list = pp.make_param_mesh([beta_list, tau_list])
@@ -161,7 +161,7 @@ def main(args):
         hyp_param_names,
         hyp_param_scales,
         hyp_params,
-    ) = post.get_ESN_properties_from_results(config, results, dim)
+    ) = post.get_ESN_properties_from_results(config, results, dim, top_idx=args.top_idx)
     ESN_dict["verbose"] = False
     print(ESN_dict)
     [
@@ -235,7 +235,7 @@ def main(args):
                     P=data[loop_name]["p"],
                 )
                 y_pred = y_pred[1:]
-                error = error_measure(data[loop_name]["y"], y_pred)
+                error = error_measure(data[loop_name]["y"][:,:2*N_g], y_pred[:,:2*N_g]) # do this propery with the enums
                 print(f"Loop {loop_name} error: {error}")
                 error_mat[p_idx, loop_idx, e_idx] = error
 
@@ -247,6 +247,7 @@ def main(args):
         "test_parameters": test_param_list,
         "beta_list": beta_list,
         "tau_list": tau_list,
+        "top_idx": args.top_idx
     }
 
     print(f"Saving results to {experiment_path}.", flush=True)
@@ -259,5 +260,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment_path", type=str)
     parser.add_argument("--data_dir", type=str, default="data")
+    parser.add_argument("--top_idx",type=int,default=0)
     parsed_args = parser.parse_args()
     main(parsed_args)
