@@ -26,7 +26,7 @@ def main(args):
 
     # iterate over the files in the folder
     for hyp_file_name in hyp_folder_path.iterdir():
-        if "20231020" in hyp_file_name.as_posix():
+        if "20231029" in hyp_file_name.as_posix():
             print(hyp_file_name)
             config = load_config(hyp_file_name).to_dict()
             try:

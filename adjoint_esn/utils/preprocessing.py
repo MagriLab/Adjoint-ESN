@@ -49,7 +49,15 @@ def get_steps(t, dt):
 
 
 def load_data(
-    beta, tau, N_g, sim_time, data_dir, x_f=0.2, sim_dt=1e-3, integrator="odeint"
+    beta,
+    tau,
+    N_g,
+    sim_time,
+    data_dir,
+    x_f=0.2,
+    sim_dt=1e-3,
+    integrator="odeint",
+    y_init=None,
 ):
     # construct data path name
     beta_name = f"{beta:.2f}"
@@ -83,6 +91,9 @@ def load_data(
             print(f"Integrator not odeint, saved data was generated with odeint.")
             run_sim = True
 
+        if y_init is not None:
+            run_sim = True
+
         if not run_sim:
             # reduce the simulation time steps if necessary
             sim_time_steps = get_steps(sim_time, loaded_sim_dt)
@@ -104,8 +115,11 @@ def load_data(
             damping="modal",
         )
         # run simulation
-        y0 = np.zeros(my_rijke.N_dim)
-        y0[0] = 1.0
+        if y_init is not None:
+            y0 = y_init
+        else:
+            y0 = np.zeros(my_rijke.N_dim)
+            y0[0] = 1.0
 
         # temporal grid
         t = np.arange(0, sim_time + sim_dt, sim_dt)

@@ -28,8 +28,8 @@ def get_config():
     config.model.u_f_order = 0
 
     config.model.type = "standard"
-    config.model.reservoir_size = 300
-    config.model.connectivity = 3
+    config.model.reservoir_size = 1200
+    config.model.connectivity = 20
     config.model.r2_mode = False
     config.model.input_only_mode = False
     config.model.input_weights_mode = "sparse_grouped"
@@ -38,8 +38,10 @@ def get_config():
     # training configuration
     config.train = ml_collections.ConfigDict()
 
-    config.train.regime_selection = 5  # 'all', integer if random, list if fixed indices
-    config.train.time = 200
+    config.train.regime_selection = (
+        20  # 'all', integer if random, list if fixed indices
+    )
+    config.train.time = 8
     config.train.tikhonov = 1e-3
 
     # validation configuration
@@ -49,10 +51,10 @@ def get_config():
     config.val.regime_selection = 5
     config.val.time = 200
     config.val.fold_time = 4
-    config.val.n_folds = 3
-    config.val.n_realisations = 3
-    config.val.n_calls = 5
-    config.val.n_initial_points = 2
+    config.val.n_folds = 5
+    config.val.n_realisations = 5
+    config.val.n_calls = 10
+    config.val.n_initial_points = 5
     config.val.error_measure = "rmse"
 
     # Ranges for the hyperparameters
@@ -71,8 +73,8 @@ def get_config():
 
     # INPUT SCALING
     config.val.hyperparameters.input_scaling = ml_collections.ConfigDict()
-    config.val.hyperparameters.input_scaling.min = 0.05
-    config.val.hyperparameters.input_scaling.max = 5.0
+    config.val.hyperparameters.input_scaling.min = 0.01
+    config.val.hyperparameters.input_scaling.max = 10.0
     config.val.hyperparameters.input_scaling.scale = "log10"
 
     # U_F_SCALING
@@ -83,13 +85,13 @@ def get_config():
 
     # LEAK FACTOR
     config.val.hyperparameters.leak_factor = ml_collections.ConfigDict()
-    config.val.hyperparameters.leak_factor.min = 0.1
+    config.val.hyperparameters.leak_factor.min = 0.01
     config.val.hyperparameters.leak_factor.max = 1.0
-    config.val.hyperparameters.leak_factor.scale = "uniform"
+    config.val.hyperparameters.leak_factor.scale = "log10"
 
     # TIKHONOV
     config.val.hyperparameters.tikhonov = ml_collections.ConfigDict()
-    config.val.hyperparameters.tikhonov.min = 1e-4
+    config.val.hyperparameters.tikhonov.min = 1e-8
     config.val.hyperparameters.tikhonov.max = 1e-1
     config.val.hyperparameters.tikhonov.scale = "log10"
 
@@ -111,23 +113,23 @@ def get_config():
     config.val.hyperparameters.parameter_normalization_var.beta = (
         ml_collections.ConfigDict()
     )
-    config.val.hyperparameters.parameter_normalization_var.beta.min = 1.0
+    config.val.hyperparameters.parameter_normalization_var.beta.min = 0.01
     config.val.hyperparameters.parameter_normalization_var.beta.max = 10.0
-    config.val.hyperparameters.parameter_normalization_var.beta.scale = "uniform"
+    config.val.hyperparameters.parameter_normalization_var.beta.scale = "log10"
 
     # TAU
     config.val.hyperparameters.parameter_normalization_mean.tau = (
         ml_collections.ConfigDict()
     )
-    config.val.hyperparameters.parameter_normalization_mean.tau.min = -0.5
-    config.val.hyperparameters.parameter_normalization_mean.tau.max = 0.5
+    config.val.hyperparameters.parameter_normalization_mean.tau.min = -1.0
+    config.val.hyperparameters.parameter_normalization_mean.tau.max = 1.0
     config.val.hyperparameters.parameter_normalization_mean.tau.scale = "uniform"
 
     config.val.hyperparameters.parameter_normalization_var.tau = (
         ml_collections.ConfigDict()
     )
-    config.val.hyperparameters.parameter_normalization_var.tau.min = 1.0
+    config.val.hyperparameters.parameter_normalization_var.tau.min = 0.01
     config.val.hyperparameters.parameter_normalization_var.tau.max = 10.0
-    config.val.hyperparameters.parameter_normalization_var.tau.scale = "uniform"
+    config.val.hyperparameters.parameter_normalization_var.tau.scale = "log10"
 
     return config
