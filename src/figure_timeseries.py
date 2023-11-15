@@ -403,6 +403,7 @@ for p_idx, p in enumerate(test_param_list):
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color, pred_color],
     )
-    if save_fig:
-        fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+
+if save_fig:
+    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
 plt.show()
