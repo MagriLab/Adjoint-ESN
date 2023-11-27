@@ -18,29 +18,40 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 
 def gradient_descent(
-    start, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50, tol=0.001
+    start, norm, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50, tol=0.001
 ):
     p = start
-    hist = {"p": [], "J": [], "dJdp": []}
+    p_hat = p / norm
+    hist = {"p": [], "p_hat": [], "J": [], "dJdp": [], "dJdp_hat": []}
 
     for iter in range(max_iter):
         regime_str = f"beta = {p[eParam.beta]}, tau = {p[eParam.tau]}"
-        print(f"Iteration: {iter}, Regime: {regime_str}")
+        print(f"Iteration: {iter}, Regime: {regime_str}", flush=True)
+        regime_hat_str = f"beta = {p_hat[eParam.beta]}, tau = {p_hat[eParam.tau]}"
+        print(f"Normalised regime: {regime_hat_str}", flush=True)
 
         J, dJdp = my_get_J_and_dJdp(p)
-        print(f"J = {J}, dJdp = {dJdp}")
+        dJdp_hat = norm * dJdp
+        print(f"J = {J}, dJdp = {dJdp}", flush=True)
+        print(f"Normalised dJdp = {dJdp_hat}", flush=True)
 
         # history tracing
         hist["p"].append(p)
+        hist["p_hat"].append(p_hat)
         hist["J"].append(J)
         hist["dJdp"].append(dJdp)
+        hist["dJdp_hat"].append(dJdp_hat)
 
-        diff = learn_rate * dJdp
+        diff = learn_rate * dJdp_hat
 
         if np.linalg.norm(diff) < tol:
             break
 
-        p = p - diff
+        # take a step in the normalised direction
+        p_hat = p_hat - diff
+
+        # revert the normalisation and check for bounds
+        p = norm * p_hat
 
         # round tau
         p[eParam.tau] = np.round(p[eParam.tau], 2)
@@ -52,8 +63,8 @@ def gradient_descent(
 
     J, dJdp = my_get_J_and_dJdp(p)
     regime_str = f"beta = {p[eParam.beta]}, tau = {p[eParam.tau]}"
-    print(f"Optimal parameters, Regime: {regime_str}")
-    print(f"J = {J}, dJdp = {dJdp}")
+    print(f"Optimal parameters, Regime: {regime_str}", flush=True)
+    print(f"J = {J}, dJdp = {dJdp}", flush=True)
 
     # history tracing
     hist["p"].append(p)
@@ -101,14 +112,9 @@ def get_J_and_dJdp(p, my_ESN, u_washout_auto, N, N_transient):
 model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
 data_dir = Path("data")
 
-test_time = 1
-test_transient_time = 2
-n_ensemble = 1
+test_time = 100
+test_transient_time = 200
 eta_1_init = 1.5
-
-beta_list = np.arange(0.5, 5.5, 0.1)
-tau_list = np.arange(0.05, 0.35, 0.01)
-p_list = pp.make_param_mesh([beta_list, tau_list])
 
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
@@ -160,7 +166,7 @@ train_time = config.train.time
 loop_names = ["train"]
 loop_times = [train_time]
 
-print("Loading training data.")
+print("Loading training data.", flush=True)
 DATA = {}
 for loop_name in loop_names:
     DATA[loop_name] = {
@@ -220,7 +226,7 @@ dim = DATA["train"]["u"][0].shape[1]
     hyp_params,
 ) = post.get_ESN_properties_from_results(config, results, dim)
 ESN_dict["verbose"] = False
-print(ESN_dict)
+print(ESN_dict, flush=True)
 [
     print(f"{hyp_param_name}: {hyp_param}")
     for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
@@ -228,19 +234,19 @@ print(ESN_dict)
 
 # generate and train ESN realisations
 # fix the seeds
-input_seeds = [0, 1, 2]
-reservoir_seeds = [3, 4]
+input_seeds = [20, 21, 22]
+reservoir_seeds = [23, 24]
 
 # expand the ESN dict with the fixed seeds
 ESN_dict["input_seeds"] = input_seeds
 ESN_dict["reservoir_seeds"] = reservoir_seeds
 
 # create an ESN
-print(f"Creating ESN.")
+print(f"Creating ESN.", flush=True)
 my_ESN = post.create_ESN(
     ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
 )
-print("Training ESN.")
+print("Training ESN.", flush=True)
 my_ESN.train(
     DATA["train"]["u_washout"],
     DATA["train"]["u"],
@@ -257,11 +263,11 @@ transient_steps = pp.get_steps(transient_time, network_dt)
 test_steps = pp.get_steps(test_time, network_dt)
 
 p0 = [None] * 2
-p0[eParam.beta] = 3.0
-p0[eParam.tau] = 0.2
+p0[eParam.beta] = 4.0
+p0[eParam.tau] = 0.25
 
 bounds = ((0.5, 5.5), (0.05, 0.35))
-
+p_mean = np.mean(bounds, axis=1)
 my_get_J_and_dJdp = partial(
     get_J_and_dJdp,
     my_ESN=my_ESN,
@@ -272,13 +278,21 @@ my_get_J_and_dJdp = partial(
 
 hist, opt_p = gradient_descent(
     start=np.array(p0),
+    norm=np.array(p_mean),
     my_get_J_and_dJdp=my_get_J_and_dJdp,
     bounds=bounds,
-    learn_rate=np.array([0.5, 0.1]),
-    max_iter=3,
+    learn_rate=np.array([0.01, 0.01]),
+    max_iter=30,
 )
 
-optimization_results = {"hist": hist, "optimal_parameters": opt_p}
+optimization_results = {
+    "hist": hist,
+    "optimal_parameters": opt_p,
+    "input_seeds": input_seeds,
+    "reservoir_seeds": reservoir_seeds,
+    "eta_1_init": eta_1_init,
+}
+
 print(f"Saving results to {model_path}.", flush=True)
 now = datetime.now()
 dt_string = now.strftime("%Y%m%d_%H%M%S")

@@ -30,7 +30,7 @@ def main(args):
     test_sim_time = 310
     test_loop_times = [100]
     test_transient_time = 200
-    n_ensemble = 10
+    n_ensemble = 5
     eta_1_init = 1.0
 
     if len(args.beta) == 3:
@@ -44,35 +44,6 @@ def main(args):
         tau_list = [args.tau[0]]
 
     p_list = pp.make_param_mesh([beta_list, tau_list])
-
-    fpt_tau_list = np.arange(0.05, 0.21, 0.01)
-    fpt_beta_bounds = np.array(
-        [
-            [0.5, 1.5],
-            [0.5, 1.25],
-            [0.5, 1.25],
-            [0.5, 1.0],
-            [0.5, 1.0],
-            [0.5, 0.75],
-            [0.5, 0.75],
-            [0.5, 0.75],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-            [0.5, 0.5],
-        ]
-    )
-    fpt_list = np.empty((0, 2))
-    for f_idx, fixed_tau in enumerate(fpt_tau_list):
-        fixed_beta = np.arange(
-            fpt_beta_bounds[f_idx, 0], fpt_beta_bounds[f_idx, 1] + 0.25, 0.25
-        )
-        fpt_list_f = pp.make_param_mesh([fixed_beta, np.array([fixed_tau])])
-        fpt_list = np.append(fpt_list, fpt_list_f, axis=0)
 
     config = post.load_config(model_path)
     results = pp.unpickle_file(model_path / "results.pickle")[0]
@@ -124,7 +95,7 @@ def main(args):
     loop_names = ["train"]
     loop_times = [train_time]
 
-    print("Loading training data.")
+    print("Loading training data.", flush=True)
     DATA = {}
     for loop_name in loop_names:
         DATA[loop_name] = {
@@ -202,7 +173,7 @@ def main(args):
         ESN_dict["reservoir_seeds"] = reservoir_seeds
 
         # create an ESN
-        print(f"Creating ESN {e_idx+1}/{n_ensemble}.")
+        print(f"Creating ESN {e_idx+1}/{n_ensemble}.", flush=True)
         my_ESN = post.create_ESN(
             ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
         )
@@ -233,10 +204,6 @@ def main(args):
 
     for p_idx, p in enumerate(p_list):
         p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
-
-        # if np.any([np.all(np.equal(p, fpt)) for fpt in fpt_list]):
-        #     print("Skipping because fixed point.")
-        #     continue
 
         regime_str = f'beta = {p_sim["beta"]}, tau = {p_sim["tau"]}'
         print("Regime:", regime_str)
@@ -313,10 +280,13 @@ def main(args):
                     method=finite_difference_method,
                     integrator=integrator,
                 )
-            print(f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx]}')
+            print(
+                f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx]}',
+                flush=True,
+            )
 
         J["true"][p_idx] = sens.acoustic_energy(y_bar[1:, :], N_g)
-        print(f'True J = {J["true"][p_idx]}')
+        print(f'True J = {J["true"][p_idx]}', flush=True)
 
         for esn_idx in range(n_ensemble):
             my_ESN = ESN_list[esn_idx]
@@ -371,7 +341,8 @@ def main(args):
                             method=finite_difference_method,
                         )
                     print(
-                        f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx]}'
+                        f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx]}',
+                        flush=True,
                     )
             else:
                 X_pred_grad, Y_pred_grad = my_ESN.closed_loop_with_washout(
@@ -406,7 +377,8 @@ def main(args):
                             method=finite_difference_method,
                         )
                     print(
-                        f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx]}'
+                        f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx]}',
+                        flush=True,
                     )
 
             J["esn"][esn_idx, p_idx] = sens.acoustic_energy(Y_pred_grad[1:, :], N_g)

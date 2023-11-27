@@ -53,7 +53,7 @@ pred_ms = 5
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
 
-fig = plt.figure(figsize=(15, 8), constrained_layout=True)
+fig = plt.figure(figsize=(15, 5), constrained_layout=True)
 
 # print model properties
 config = post.load_config(model_path)

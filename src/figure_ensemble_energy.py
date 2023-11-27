@@ -22,7 +22,7 @@ save_fig = True
 # N_reservoir = 1200, connectivity = 20
 model_path = Path("local_results/rijke/run_20231029_153121")
 
-save_path = "20231115_002644"
+save_path = "20231115_143329"
 
 # titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
 
@@ -31,7 +31,7 @@ fig = plt.figure(figsize=(5, 5), constrained_layout=True)
 # print model properties
 ener_results = pp.unpickle_file(model_path / f"energy_results_{save_path}.pickle")[0]
 ener_mat_pred = ener_results["J"]
-ener_mat_mean = np.mean(ener_mat_pred, axis=0)  # ensembles x params x 2
+# ener_mat_mean = np.mean(ener_mat_pred, axis=0)  # ensembles x params x 2
 
 
 beta_list = ener_results["beta_list"]
@@ -48,14 +48,16 @@ tau_ticks = tau_ticks[::tau_step]
 tau_ticklabels = [f"{tau_name:.2f}" for tau_name in tau_list[::tau_step]]
 
 # reshape as a grid rows increasing beta, columns increasing tau
-J_mean_grid = ener_mat_mean.reshape(len(beta_list), len(tau_list))
+J_mean_grid = ener_mat_pred.reshape(len(beta_list), len(tau_list))
 J_mean_grid = J_mean_grid.T
 
 beta, tau = np.meshgrid(beta_list, tau_list)
 
 ax = fig.add_subplot(1, 1, 1)
-pos = ax.imshow(J_mean_grid, origin="lower", aspect=1.5)
-cbar = fig.colorbar(pos, ax=ax, shrink=0.75, ticks=np.arange(5, 95, 10))
+pos = ax.imshow(J_mean_grid, origin="lower", aspect=1.5, vmax=60)
+cbar = fig.colorbar(pos, ax=ax, shrink=0.75, ticks=[20, 40, 60])
+cbar.ax.set_yticklabels(["$20$", "$40$", "$\geq 60$"])
+
 ax.set_yticks(tau_ticks)
 ax.set_yticklabels(tau_ticklabels)
 ax.set_ylabel("$\\tau$")
