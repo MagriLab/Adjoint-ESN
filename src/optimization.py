@@ -29,7 +29,7 @@ def gradient_descent(
     p_hat = p / norm
     hist = {"p": [], "p_hat": [], "J": [], "dJdp": [], "dJdp_hat": []}
 
-    J_prev = np.inf
+    J_prev = 1e5
 
     for iter in range(max_iter):
         regime_str = f"beta = {p[eParam.beta]}, tau = {p[eParam.tau]}"
@@ -52,6 +52,10 @@ def gradient_descent(
         diff = learn_rate * dJdp_hat
         J_diff = (J_prev - J) / J_prev
 
+        # update J prev
+        J_prev = J
+
+        # check stopping conditions
         if np.linalg.norm(diff) < tol:
             break
 
