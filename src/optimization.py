@@ -17,12 +17,19 @@ from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam, get_eVar
 
 
+def round_tau(tau, dt):
+    div = tau / dt
+    return dt * np.round(div)
+
+
 def gradient_descent(
-    start, norm, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50, tol=0.001
+    start, norm, dt, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50, tol=0.001
 ):
     p = start
     p_hat = p / norm
     hist = {"p": [], "p_hat": [], "J": [], "dJdp": [], "dJdp_hat": []}
+
+    J_prev = np.inf
 
     for iter in range(max_iter):
         regime_str = f"beta = {p[eParam.beta]}, tau = {p[eParam.tau]}"
@@ -43,8 +50,12 @@ def gradient_descent(
         hist["dJdp_hat"].append(dJdp_hat)
 
         diff = learn_rate * dJdp_hat
+        J_diff = (J_prev - J) / J_prev
 
         if np.linalg.norm(diff) < tol:
+            break
+
+        if J_diff < tol:
             break
 
         # take a step in the normalised direction
@@ -54,12 +65,15 @@ def gradient_descent(
         p = norm * p_hat
 
         # round tau
-        p[eParam.tau] = np.round(p[eParam.tau], 2)
+        p[eParam.tau] = round_tau(p[eParam.tau], dt)
 
         # check the bounds
         if bounds:
             p = np.array([max(p[i], bounds[i][0]) for i in range(len(p))])
             p = np.array([min(p[i], bounds[i][1]) for i in range(len(p))])
+
+        # update p_hat after checking the bounds
+        p_hat = p / norm
 
     J, dJdp = my_get_J_and_dJdp(p)
     regime_str = f"beta = {p[eParam.beta]}, tau = {p[eParam.tau]}"
@@ -279,6 +293,7 @@ my_get_J_and_dJdp = partial(
 hist, opt_p = gradient_descent(
     start=np.array(p0),
     norm=np.array(p_mean),
+    dt=network_dt,
     my_get_J_and_dJdp=my_get_J_and_dJdp,
     bounds=bounds,
     learn_rate=np.array([0.01, 0.01]),
