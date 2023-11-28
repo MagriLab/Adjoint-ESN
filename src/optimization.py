@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 
@@ -40,7 +41,7 @@ def gradient_descent(
         J, dJdp = my_get_J_and_dJdp(p)
         dJdp_hat = norm * dJdp
         print(f"J = {J}, dJdp = {dJdp}", flush=True)
-        print(f"Normalised dJdp = {dJdp_hat}", flush=True)
+        # print(f"Normalised dJdp = {dJdp_hat}", flush=True)
 
         # history tracing
         hist["p"].append(p)
@@ -49,7 +50,11 @@ def gradient_descent(
         hist["dJdp"].append(dJdp)
         hist["dJdp_hat"].append(dJdp_hat)
 
-        diff = learn_rate * dJdp_hat
+        dJdp_hat_norm = dJdp_hat / np.linalg.norm(dJdp_hat)
+        print(f"Normalised dJdp = {dJdp_hat_norm}", flush=True)
+
+        diff = learn_rate * dJdp_hat_norm
+
         J_diff = (J_prev - J) / J_prev
 
         # update J prev
@@ -92,7 +97,7 @@ def gradient_descent(
     return hist, p
 
 
-def get_J_and_dJdp(p, my_ESN, u_washout_auto, N, N_transient):
+def get_J_and_dJdp(p, my_ESN, u_washout_auto, N, N_transient, N_g):
     p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
 
     if hasattr(my_ESN, "tau"):
@@ -127,194 +132,205 @@ def get_J_and_dJdp(p, my_ESN, u_washout_auto, N, N_transient):
     return J, dJdp
 
 
-model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
-data_dir = Path("data")
+def main(args):
+    model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
+    data_dir = Path("data")
 
-test_time = 100
-test_transient_time = 200
-eta_1_init = 1.5
+    test_time = 2
+    test_transient_time = 200
+    eta_1_init = 1.5
 
-config = post.load_config(model_path)
-results = pp.unpickle_file(model_path / "results.pickle")[0]
+    config = post.load_config(model_path)
+    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
-# DATA creation
-integrator = "odeint"
+    # DATA creation
+    integrator = "odeint"
 
-# number of galerkin modes
-N_g = config.simulation.N_g
+    # number of galerkin modes
+    N_g = config.simulation.N_g
 
-# simulation options
-sim_time = config.simulation.sim_time
-sim_dt = config.simulation.sim_dt
+    # simulation options
+    sim_time = config.simulation.sim_time
+    sim_dt = config.simulation.sim_dt
 
-# which regimes to use for training and validation
-train_param_list = results["training_parameters"]
-train_idx_list = np.arange(len(train_param_list))
+    # which regimes to use for training and validation
+    train_param_list = results["training_parameters"]
+    train_idx_list = np.arange(len(train_param_list))
 
-transient_time = config.simulation.transient_time
+    transient_time = config.simulation.transient_time
 
-noise_level = config.simulation.noise_level
+    noise_level = config.simulation.noise_level
 
-random_seed = config.random_seed
+    random_seed = config.random_seed
 
-# network time step
-network_dt = config.model.network_dt
+    # network time step
+    network_dt = config.model.network_dt
 
-washout_time = config.model.washout_time
+    washout_time = config.model.washout_time
 
-# which states to use as input and output
-# for standard ESN these should be the same, e.g. both 'eta_mu'
-# for Rijke ESN, input and output should be 'eta_mu_v_tau' and 'eta_mu' respectively
-input_vars = config.model.input_vars
-output_vars = config.model.output_vars
+    # which states to use as input and output
+    # for standard ESN these should be the same, e.g. both 'eta_mu'
+    # for Rijke ESN, input and output should be 'eta_mu_v_tau' and 'eta_mu' respectively
+    input_vars = config.model.input_vars
+    output_vars = config.model.output_vars
 
-eInputVar = get_eVar(input_vars, N_g)
-eOutputVar = get_eVar(output_vars, N_g)
+    eInputVar = get_eVar(input_vars, N_g)
+    eOutputVar = get_eVar(output_vars, N_g)
 
-# which system parameter is passed to the ESN
-param_vars = config.model.param_vars
+    # which system parameter is passed to the ESN
+    param_vars = config.model.param_vars
 
-# if using Rijke ESN what is the order of u_f(t-tau) in the inputs,
-# [u_f(t-tau), u_f(t-tau)^2 ..., u_f(t-tau)^(u_f_order)]
-u_f_order = config.model.u_f_order
+    # if using Rijke ESN what is the order of u_f(t-tau) in the inputs,
+    # [u_f(t-tau), u_f(t-tau)^2 ..., u_f(t-tau)^(u_f_order)]
+    u_f_order = config.model.u_f_order
 
-# length of training time series
-train_time = config.train.time
+    # length of training time series
+    train_time = config.train.time
 
-loop_names = ["train"]
-loop_times = [train_time]
+    loop_names = ["train"]
+    loop_times = [train_time]
 
-print("Loading training data.", flush=True)
-DATA = {}
-for loop_name in loop_names:
-    DATA[loop_name] = {
-        "u_washout": [],
-        "p_washout": [],
-        "u": [],
-        "p": [],
-        "y": [],
-        "t": [],
+    print("Loading training data.", flush=True)
+    DATA = {}
+    for loop_name in loop_names:
+        DATA[loop_name] = {
+            "u_washout": [],
+            "p_washout": [],
+            "u": [],
+            "p": [],
+            "y": [],
+            "t": [],
+        }
+
+    for p_idx, p in enumerate(train_param_list):
+        p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
+        y_sim, t_sim = pp.load_data(
+            beta=p_sim["beta"],
+            tau=p_sim["tau"],
+            x_f=0.2,
+            N_g=N_g,
+            sim_time=sim_time,
+            sim_dt=sim_dt,
+            data_dir=data_dir,
+            integrator=integrator,
+        )
+
+        regime_data = pp.create_dataset(
+            y_sim,
+            t_sim,
+            p_sim,
+            network_dt=network_dt,
+            transient_time=transient_time,
+            washout_time=washout_time,
+            loop_times=loop_times,
+            loop_names=loop_names,
+            input_vars=input_vars,
+            output_vars=output_vars,
+            param_vars=param_vars,
+            N_g=N_g,
+            u_f_order=u_f_order,
+            noise_level=noise_level,
+            random_seed=random_seed,
+        )
+
+        for loop_name in loop_names:
+            [
+                DATA[loop_name][var].append(regime_data[loop_name][var])
+                for var in DATA[loop_name].keys()
+            ]
+
+    # dimension of the inputs
+    dim = DATA["train"]["u"][0].shape[1]
+
+    # get the properties of the best ESN from the results
+    (
+        ESN_dict,
+        hyp_param_names,
+        hyp_param_scales,
+        hyp_params,
+    ) = post.get_ESN_properties_from_results(config, results, dim)
+    ESN_dict["verbose"] = False
+    print(ESN_dict, flush=True)
+    [
+        print(f"{hyp_param_name}: {hyp_param}")
+        for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
+    ]
+
+    # generate and train ESN realisations
+    # fix the seeds
+    input_seeds = [20, 21, 22]
+    reservoir_seeds = [23, 24]
+
+    # expand the ESN dict with the fixed seeds
+    ESN_dict["input_seeds"] = input_seeds
+    ESN_dict["reservoir_seeds"] = reservoir_seeds
+
+    # create an ESN
+    print(f"Creating ESN.", flush=True)
+    my_ESN = post.create_ESN(
+        ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
+    )
+    print("Training ESN.", flush=True)
+    my_ESN.train(
+        DATA["train"]["u_washout"],
+        DATA["train"]["u"],
+        DATA["train"]["y"],
+        P_washout=DATA["train"]["p_washout"],
+        P_train=DATA["train"]["p"],
+        train_idx_list=train_idx_list,
+    )
+
+    y0 = np.zeros((1, DATA["train"]["u_washout"][0].shape[1]))
+    y0[0, 0] = eta_1_init
+    u_washout_auto = np.repeat(y0, [len(DATA["train"]["u_washout"][0])], axis=0)
+    transient_steps = pp.get_steps(test_transient_time, network_dt)
+    test_steps = pp.get_steps(test_time, network_dt)
+
+    p0 = [None] * 2
+    p0[eParam.beta] = args.init_beta
+    p0[eParam.tau] = args.init_tau
+
+    bounds = ((0.5, 5.5), (0.05, 0.35))
+    p_mean = np.mean(bounds, axis=1)
+    my_get_J_and_dJdp = partial(
+        get_J_and_dJdp,
+        my_ESN=my_ESN,
+        u_washout_auto=u_washout_auto,
+        N=test_steps,
+        N_transient=transient_steps,
+        N_g=N_g,
+    )
+
+    hist, opt_p = gradient_descent(
+        start=np.array(p0),
+        norm=np.array(p_mean),
+        dt=network_dt,
+        my_get_J_and_dJdp=my_get_J_and_dJdp,
+        bounds=bounds,
+        learn_rate=np.array([args.learning_rate, args.learning_rate]),
+        max_iter=30,
+    )
+
+    optimization_results = {
+        "hist": hist,
+        "optimal_parameters": opt_p,
+        "input_seeds": input_seeds,
+        "reservoir_seeds": reservoir_seeds,
+        "eta_1_init": eta_1_init,
     }
 
-for p_idx, p in enumerate(train_param_list):
-    p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
-    y_sim, t_sim = pp.load_data(
-        beta=p_sim["beta"],
-        tau=p_sim["tau"],
-        x_f=0.2,
-        N_g=N_g,
-        sim_time=sim_time,
-        sim_dt=sim_dt,
-        data_dir=data_dir,
-        integrator=integrator,
+    print(f"Saving results to {model_path}.", flush=True)
+    now = datetime.now()
+    dt_string = now.strftime("%Y%m%d_%H%M%S")
+    pp.pickle_file(
+        model_path / f"optimization_results_{dt_string}.pickle", optimization_results
     )
 
-    regime_data = pp.create_dataset(
-        y_sim,
-        t_sim,
-        p_sim,
-        network_dt=network_dt,
-        transient_time=transient_time,
-        washout_time=washout_time,
-        loop_times=loop_times,
-        loop_names=loop_names,
-        input_vars=input_vars,
-        output_vars=output_vars,
-        param_vars=param_vars,
-        N_g=N_g,
-        u_f_order=u_f_order,
-        noise_level=noise_level,
-        random_seed=random_seed,
-    )
 
-    for loop_name in loop_names:
-        [
-            DATA[loop_name][var].append(regime_data[loop_name][var])
-            for var in DATA[loop_name].keys()
-        ]
-
-# dimension of the inputs
-dim = DATA["train"]["u"][0].shape[1]
-
-# get the properties of the best ESN from the results
-(
-    ESN_dict,
-    hyp_param_names,
-    hyp_param_scales,
-    hyp_params,
-) = post.get_ESN_properties_from_results(config, results, dim)
-ESN_dict["verbose"] = False
-print(ESN_dict, flush=True)
-[
-    print(f"{hyp_param_name}: {hyp_param}")
-    for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
-]
-
-# generate and train ESN realisations
-# fix the seeds
-input_seeds = [20, 21, 22]
-reservoir_seeds = [23, 24]
-
-# expand the ESN dict with the fixed seeds
-ESN_dict["input_seeds"] = input_seeds
-ESN_dict["reservoir_seeds"] = reservoir_seeds
-
-# create an ESN
-print(f"Creating ESN.", flush=True)
-my_ESN = post.create_ESN(
-    ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
-)
-print("Training ESN.", flush=True)
-my_ESN.train(
-    DATA["train"]["u_washout"],
-    DATA["train"]["u"],
-    DATA["train"]["y"],
-    P_washout=DATA["train"]["p_washout"],
-    P_train=DATA["train"]["p"],
-    train_idx_list=train_idx_list,
-)
-
-y0 = np.zeros((1, DATA["train"]["u_washout"][0].shape[1]))
-y0[0, 0] = eta_1_init
-u_washout_auto = np.repeat(y0, [len(DATA["train"]["u_washout"][0])], axis=0)
-transient_steps = pp.get_steps(transient_time, network_dt)
-test_steps = pp.get_steps(test_time, network_dt)
-
-p0 = [None] * 2
-p0[eParam.beta] = 4.0
-p0[eParam.tau] = 0.25
-
-bounds = ((0.5, 5.5), (0.05, 0.35))
-p_mean = np.mean(bounds, axis=1)
-my_get_J_and_dJdp = partial(
-    get_J_and_dJdp,
-    my_ESN=my_ESN,
-    u_washout_auto=u_washout_auto,
-    N=test_steps,
-    N_transient=transient_steps,
-)
-
-hist, opt_p = gradient_descent(
-    start=np.array(p0),
-    norm=np.array(p_mean),
-    dt=network_dt,
-    my_get_J_and_dJdp=my_get_J_and_dJdp,
-    bounds=bounds,
-    learn_rate=np.array([0.01, 0.01]),
-    max_iter=30,
-)
-
-optimization_results = {
-    "hist": hist,
-    "optimal_parameters": opt_p,
-    "input_seeds": input_seeds,
-    "reservoir_seeds": reservoir_seeds,
-    "eta_1_init": eta_1_init,
-}
-
-print(f"Saving results to {model_path}.", flush=True)
-now = datetime.now()
-dt_string = now.strftime("%Y%m%d_%H%M%S")
-pp.pickle_file(
-    model_path / f"optimization_results_{dt_string}.pickle", optimization_results
-)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--init_beta", type=float)
+    parser.add_argument("--init_tau", type=float)
+    parser.add_argument("--learning_rate", type=float)
+    parsed_args = parser.parse_args()
+    main(parsed_args)
