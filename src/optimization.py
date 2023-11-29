@@ -61,12 +61,13 @@ def gradient_descent(
         J_prev = J
 
         # check stopping conditions
-        if np.linalg.norm(dJdp_hat) < 1e-4:
+        if J < 1e-4:
             break
 
-        if J_diff < 1e-2:
-            learn_rate = 0.5 * learn_rate
-        elif J_diff < 1e-4:
+        if np.linalg.norm(dJdp) < 1e-4:
+            break
+
+        if J_diff < 1e-4:
             break
 
         # take a step in the normalised direction
