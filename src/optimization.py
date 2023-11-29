@@ -24,7 +24,7 @@ def round_tau(tau, dt):
 
 
 def gradient_descent(
-    start, norm, dt, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50, tol=0.001
+    start, norm, dt, my_get_J_and_dJdp, learn_rate, bounds=None, max_iter=50
 ):
     p = start
     p_hat = p / norm
@@ -61,10 +61,12 @@ def gradient_descent(
         J_prev = J
 
         # check stopping conditions
-        if np.linalg.norm(diff) < tol:
+        if np.linalg.norm(dJdp_hat) < 1e-4:
             break
 
-        if J_diff < tol:
+        if J_diff < 1e-2:
+            learn_rate = 0.5 * learn_rate
+        elif J_diff < 1e-4:
             break
 
         # take a step in the normalised direction
@@ -136,7 +138,7 @@ def main(args):
     model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
     data_dir = Path("data")
 
-    test_time = 2
+    test_time = 100
     test_transient_time = 200
     eta_1_init = 1.5
 
