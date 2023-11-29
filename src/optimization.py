@@ -55,7 +55,7 @@ def gradient_descent(
 
         diff = learn_rate * dJdp_hat_norm
 
-        J_diff = (J_prev - J) / J_prev
+        J_diff = np.abs(J_prev - J) / np.abs(J_prev)
 
         # update J prev
         J_prev = J
