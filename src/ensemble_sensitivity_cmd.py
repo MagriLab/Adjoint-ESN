@@ -28,10 +28,10 @@ def main(args):
     data_dir = Path("data")
 
     test_sim_time = 310
-    test_loop_times = [100]
+    test_loop_times = [2]
     test_transient_time = 200
     n_ensemble = 5
-    eta_1_init = 1.0
+    eta_1_init = args.eta_1_init
 
     if len(args.beta) == 3:
         beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
@@ -214,7 +214,7 @@ def main(args):
         u_washout_auto = np.repeat(y0, [len(DATA["train"]["u_washout"][0])], axis=0)
 
         y0_sim = np.zeros(2 * N_g + 10)
-        y0_sim = eta_1_init
+        y0_sim[0] = eta_1_init
 
         y_sim, t_sim = pp.load_data(
             beta=p_sim["beta"],
@@ -308,7 +308,7 @@ def main(args):
                 # let the ESN run in open-loop for the wash-out
                 # get the initial reservoir to start the actual open/closed-loop,
                 # which is the last reservoir state
-                if args.same_washout:
+                if args.same_washout == True:
                     X_tau = my_ESN.open_loop(
                         x0=x0_washout,
                         U=data[loop_name]["u_washout"],
@@ -413,6 +413,8 @@ def main(args):
         "J": J,
         "beta_list": beta_list,
         "tau_list": tau_list,
+        "same_washout": args.same_washout,
+        "eta_1_init": args.eta_1_init,
     }
 
     print(f"Saving results to {model_path}.", flush=True)
@@ -427,6 +429,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--beta", nargs="+", type=float)
     parser.add_argument("--tau", nargs="+", type=float)
-    parser.add_argument("--same_washout", type=bool)
+    parser.add_argument("--same_washout", default=False, action="store_true")
+    parser.add_argument("--eta_1_init", default=1.0, type=float)
     parsed_args = parser.parse_args()
     main(parsed_args)
