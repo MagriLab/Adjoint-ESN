@@ -207,8 +207,15 @@ def main(args):
 
         regime_str = f'beta = {p_sim["beta"]}, tau = {p_sim["tau"]}'
         print("Regime:", regime_str)
-        y_init = np.zeros(2 * N_g + 10)
-        y_init[0] = eta_1_init
+
+        # set up the initial conditions
+        y0 = np.zeros((1, DATA["train"]["u_washout"][0].shape[1]))
+        y0[0, 0] = eta_1_init
+        u_washout_auto = np.repeat(y0, [len(DATA["train"]["u_washout"][0])], axis=0)
+
+        y0_sim = np.zeros(2 * N_g + 10)
+        y0_sim = eta_1_init
+
         y_sim, t_sim = pp.load_data(
             beta=p_sim["beta"],
             tau=p_sim["tau"],
@@ -218,7 +225,7 @@ def main(args):
             sim_dt=sim_dt,
             data_dir=data_dir,
             integrator=integrator,
-            y_init=None,
+            y_init=y0_sim,
         )
 
         data = pp.create_dataset(
@@ -295,26 +302,47 @@ def main(args):
             x0_washout = np.zeros(my_ESN.N_reservoir)
             N = len(data[loop_name]["u"])
 
-            # N_transient_ = pp.get_steps(transient_time, network_dt)
+            N_transient_test = pp.get_steps(test_transient_time, network_dt)
             if hasattr(my_ESN, "tau"):
                 my_ESN.tau = p_sim["tau"]
                 # let the ESN run in open-loop for the wash-out
                 # get the initial reservoir to start the actual open/closed-loop,
                 # which is the last reservoir state
-                X_tau = my_ESN.open_loop(
-                    x0=x0_washout,
-                    U=data[loop_name]["u_washout"],
-                    P=data[loop_name]["p_washout"],
-                )
-                P_grad = np.vstack(
-                    (
-                        data[loop_name]["p_washout"][-my_ESN.N_tau - 1 :, :],
-                        data[loop_name]["p"],
+                if args.same_washout:
+                    X_tau = my_ESN.open_loop(
+                        x0=x0_washout,
+                        U=data[loop_name]["u_washout"],
+                        P=data[loop_name]["p_washout"],
                     )
-                )
-                X_pred_grad, Y_pred_grad = my_ESN.closed_loop(
-                    X_tau[-my_ESN.N_tau - 1 :, :], N_t=N, P=P_grad
-                )
+                    P_grad = np.vstack(
+                        (
+                            data[loop_name]["p_washout"][-my_ESN.N_tau - 1 :, :],
+                            data[loop_name]["p"],
+                        )
+                    )
+                    X_pred_grad, Y_pred_grad = my_ESN.closed_loop(
+                        X_tau[-my_ESN.N_tau - 1 :, :], N_t=N, P=P_grad
+                    )
+                else:
+                    # assume don't have access to the washout data
+                    X_tau = my_ESN.open_loop(
+                        x0=x0_washout, U=u_washout_auto, P=data[loop_name]["p_washout"]
+                    )
+                    # let evolve for a longer time and then remove washout
+                    N_long = N_transient_test + N
+                    P_grad = data[loop_name]["p_washout"][0] * np.ones((N_long, 1))
+                    P_grad = np.vstack(
+                        (data[loop_name]["p_washout"][-my_ESN.N_tau - 1 :, :], P_grad)
+                    )
+                    X_pred_grad, Y_pred_grad = my_ESN.closed_loop(
+                        X_tau[-my_ESN.N_tau - 1 :, :], N_t=N_long, P=P_grad
+                    )
+
+                    # remove transient
+                    X_tau = X_pred_grad[:N_transient_test, :]
+                    X_pred_grad = X_pred_grad[N_transient_test:, :]
+                    Y_pred_grad = Y_pred_grad[N_transient_test:, :]
+                    P_grad = P_grad[N_transient_test:, :]
 
                 for method_name in methods:
                     if method_name == "direct":
@@ -351,10 +379,6 @@ def main(args):
                     P_washout=data[loop_name]["p_washout"],
                     P=data[loop_name]["p"],
                 )
-                # take out transient
-                # X_pred_grad = X_pred_grad[N_transient_:,:]
-                # Y_pred_grad = Y_pred_grad[N_transient_:,:]
-                # N = len(data[loop_name]["u"])-N_transient_
 
                 for method_name in methods:
                     if method_name == "direct":
@@ -403,5 +427,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--beta", nargs="+", type=float)
     parser.add_argument("--tau", nargs="+", type=float)
+    parser.add_argument("--same_washout", type=bool)
     parsed_args = parser.parse_args()
     main(parsed_args)
