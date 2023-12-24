@@ -19,6 +19,10 @@ def acoustic_energy(y, N_g):
     return 1 / 4 * np.mean(np.sum(y[:, : 2 * N_g] ** 2, axis=1))
 
 
+def acoustic_energy_inst(y, N_g):
+    return 1 / 4 * (np.sum(y[:, : 2 * N_g] ** 2, axis=1))
+
+
 def true_direct_sensitivity(my_rijke, t_bar, y_bar, integrator="odeint"):
     dt = t_bar[1] - t_bar[0]
     # direct problem

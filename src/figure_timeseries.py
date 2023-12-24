@@ -10,59 +10,112 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import rc
+from scipy.signal import find_peaks
 
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
+from adjoint_esn.rijke_galerkin import sensitivity as sens
 from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
+from adjoint_esn.utils import signals
 from adjoint_esn.utils.enums import eParam, get_eVar
 
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 12})
+rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
 save_fig = True
-model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
+same_washout = False
+model_path = Path(
+    "local_results/rijke/run_20231029_153121"
+)  # rijke with reservoir, trained on beta = 1,2,3,4,5
+
+# model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
+
 data_dir = Path("data")
+
+
+def get_asd(dt, y, remove_mean=True, periodic=False):
+    # remove mean
+    if remove_mean == True:
+        y = y - np.mean(y)
+    if periodic:
+        T_period = signals.period(y, dt)
+        data_omega = 2 * np.pi / T_period
+        print("Omega = ", data_omega)
+        print("Period = ", T_period)
+        # take the maximum number of periods
+        # the real period isn't an exact multiple of the sampling time
+        # therefore, the signal doesn't repeat itself at exact integer indices
+        # so calculating the number of time steps in each period
+        # does not work in order to cut the signal at the maximum number of periods
+        # that's why we will cut between peaks, which is a more reliable option
+        # though still not exact
+        min_dist = pp.get_steps(T_period - 0.1, dt)
+        (start_pk_idx, end_pk_idx) = signals.periodic_signal_peaks(y, T=min_dist)
+        y_pre_fft = y[
+            start_pk_idx:end_pk_idx
+        ]  # don't include end peak for continuous signal
+    else:
+        y_pre_fft = y
+
+    # find asd
+    omega, asd = signals.amplitude_spectrum(y_pre_fft, dt)
+
+    # to get the harmonic frequency from the asd
+    # asd_peaks = find_peaks(asd, threshold=0.1)[0]
+    # harmonic_freq = omega[asd_peaks][0]
+    return omega, asd
+
 
 fig_name = "chaotic"
 
 if fig_name == "lco_1":
     test_param_list = [[2.0, 0.25]]
-    phase_space_steps_arr = [2]
-    true_phase_lw = 2
-    pred_phase_lw = 2
+    # phase_space_steps_arr = [2]
+    # true_phase_lw = 2
+    # pred_phase_lw = 2
+    periodic = True
+    title = "(a)"
 elif fig_name == "lco_2":
     test_param_list = [[4.5, 0.12]]
-    phase_space_steps_arr = [2]
-    true_phase_lw = 2
-    pred_phase_lw = 2
+    # phase_space_steps_arr = [2]
+    # true_phase_lw = 2
+    # pred_phase_lw = 2
+    periodic = True
+    title = "(b)"
 elif fig_name == "period_double":
     test_param_list = [[7.5, 0.3]]
-    phase_space_steps_arr = [4]
-    true_phase_lw = 2
-    pred_phase_lw = 2
+    # phase_space_steps_arr = [4]
+    # true_phase_lw = 2
+    # pred_phase_lw = 2
+    periodic = True
+    title = "(a)"
 elif fig_name == "quasi":
     test_param_list = [[6.1, 0.2]]
-    phase_space_steps_arr = [100]
-    true_phase_lw = 1
-    pred_phase_lw = 1
+    # phase_space_steps_arr = [100]
+    # true_phase_lw = 1
+    # pred_phase_lw = 1
+    periodic = False
+    title = "(b)"
 elif fig_name == "chaotic":
-    test_param_list = [[7.2, 0.2]]
-    phase_space_steps_arr = [100]
-    true_phase_lw = 1
-    pred_phase_lw = 1
+    test_param_list = [[7.2, 0.2]]  # [[7.5, 0.22]]
+    # phase_space_steps_arr = [100]
+    # true_phase_lw = 1
+    # pred_phase_lw = 1
+    periodic = False
+    title = "(c)"
 
 n_ensemble = 10
-test_loop_times = [10, 500]
+test_loop_times = [20, 500]
 test_loop_names = ["short", "long"]
 test_sim_time = 1000
-
+figure_size = (15, 4)
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
-true_color = "black"
-pred_color = "red"
-true_lw = 2
-pred_lw = 2
+true_color = "silver"
+pred_color = "tab:red"
+true_lw = 6.0
+pred_lw = 2.0
 true_ls = "-"
 pred_ls = "--"
 
@@ -100,8 +153,8 @@ output_vars = config.model.output_vars
 eInputVar = get_eVar(input_vars, N_g)
 eOutputVar = get_eVar(output_vars, N_g)
 
-plt_idx = [eOutputVar.mu_1, eOutputVar.mu_2, eOutputVar.mu_3, eOutputVar.mu_4]
-plt_idx_pairs = [[eOutputVar.mu_1, eOutputVar.mu_2], [eOutputVar.mu_3, eOutputVar.mu_4]]
+plt_idx = [eOutputVar.mu_1]
+plt_idx_pairs = [[eOutputVar.mu_1, eOutputVar.mu_2]]
 
 # which system parameter is passed to the ESN
 param_vars = config.model.param_vars
@@ -182,10 +235,37 @@ print(ESN_dict)
     for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
 ]
 
+# generate and train ESN realisations
+ESN_list = [None] * n_ensemble
+for e_idx in range(n_ensemble):
+    # fix the seeds
+    input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
+    reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
+
+    # expand the ESN dict with the fixed seeds
+    ESN_dict["input_seeds"] = input_seeds
+    ESN_dict["reservoir_seeds"] = reservoir_seeds
+
+    # create an ESN
+    print(f"Creating ESN {e_idx+1}/{n_ensemble}.", flush=True)
+    my_ESN = post.create_ESN(
+        ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
+    )
+    print("Training ESN.")
+    my_ESN.train(
+        DATA["train"]["u_washout"],
+        DATA["train"]["u"],
+        DATA["train"]["y"],
+        P_washout=DATA["train"]["p_washout"],
+        P_train=DATA["train"]["p"],
+        train_idx_list=train_idx_list,
+    )
+    ESN_list[e_idx] = my_ESN
+
 # Predict on the test dataset
 for p_idx, p in enumerate(test_param_list):
-    fig = plt.figure(figsize=(15, 5), constrained_layout=True)
-    subfigs = fig.subfigures(1, 3, width_ratios=[1, 1, 1.2])
+    fig = plt.figure(figsize=figure_size, constrained_layout=True)
+    subfigs = fig.subfigures(1, 3, width_ratios=[1.8, 1, 1.2])
 
     p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
     y_sim, t_sim = pp.load_data(
@@ -218,29 +298,8 @@ for p_idx, p in enumerate(test_param_list):
     Y_PRED_SHORT = [None] * n_ensemble
     Y_PRED_LONG = [None] * n_ensemble
     for e_idx in range(n_ensemble):
-        # fix the seeds
-        input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
-        reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
-
-        # expand the ESN dict with the fixed seeds
-        ESN_dict["input_seeds"] = input_seeds
-        ESN_dict["reservoir_seeds"] = reservoir_seeds
-
-        # create an ESN
-        print(f"Creating ESN {e_idx+1}/{n_ensemble}.")
-        my_ESN = post.create_ESN(
-            ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
-        )
-        print("Training ESN.")
-        my_ESN.train(
-            DATA["train"]["u_washout"],
-            DATA["train"]["u"],
-            DATA["train"]["y"],
-            P_washout=DATA["train"]["p_washout"],
-            P_train=DATA["train"]["p"],
-            train_idx_list=train_idx_list,
-        )
-        print("Predicting.")
+        my_ESN = ESN_list[e_idx]
+        print(f"Predicting ESN {e_idx+1}/{n_ensemble}.", flush=True)
         if hasattr(my_ESN, "tau"):
             my_ESN.tau = p_sim["tau"]
 
@@ -254,156 +313,190 @@ for p_idx, p in enumerate(test_param_list):
         Y_PRED_SHORT[e_idx] = y_pred_short
 
         # LONG-TERM AND STATISTICS, CONVERGENCE TO ATTRACTOR
-        y0 = np.zeros((1, data["long"]["u_washout"].shape[1]))
-        y0[0, 0] = 1
-        u_washout_auto = np.repeat(y0, [len(data["long"]["u_washout"])], axis=0)
-        transient_steps = pp.get_steps(transient_time, network_dt)
-        # add the transient time that will be discarded later
-        N_t_long = transient_steps + len(data["long"]["u"])
-        p_long0 = np.zeros((1, data["long"]["p"].shape[1]))
-        p_long0[0] = data["long"]["p"][0]
-        p_long = np.repeat(p_long0, [N_t_long], axis=0)
-        # Predict long-term
-        _, y_pred_long = my_ESN.closed_loop_with_washout(
-            U_washout=u_washout_auto,
-            N_t=N_t_long,
-            P_washout=data["long"]["p_washout"],
-            P=p_long,
-        )
-        y_pred_long = y_pred_long[1:]
-        y_pred_long = y_pred_long[transient_steps:, :]
+        if same_washout:
+            # Predict long-term
+            _, y_pred_long = my_ESN.closed_loop_with_washout(
+                U_washout=data["long"]["u_washout"],
+                N_t=len(data["long"]["u"]),
+                P_washout=data["long"]["p_washout"],
+                P=data["long"]["p"],
+            )
+            y_pred_long = y_pred_long[1:]
+        else:
+            y0 = np.zeros((1, data["long"]["u_washout"].shape[1]))
+            y0[0, 0] = 1
+            u_washout_auto = np.repeat(y0, [len(data["long"]["u_washout"])], axis=0)
+            transient_steps = pp.get_steps(transient_time, network_dt)
+            # add the transient time that will be discarded later
+            N_t_long = transient_steps + len(data["long"]["u"])
+            p_long0 = np.zeros((1, data["long"]["p"].shape[1]))
+            p_long0[0] = data["long"]["p"][0]
+            p_long = np.repeat(p_long0, [N_t_long], axis=0)
+            # Predict long-term
+            _, y_pred_long = my_ESN.closed_loop_with_washout(
+                U_washout=u_washout_auto,
+                N_t=N_t_long,
+                P_washout=data["long"]["p_washout"],
+                P=p_long,
+            )
+            y_pred_long = y_pred_long[1:]
+            y_pred_long = y_pred_long[transient_steps:, :]
+
         Y_PRED_LONG[e_idx] = y_pred_long
 
     pred_short_error = np.array(
         [errors.rel_L2(data["short"]["y"], Y_PRED_SHORT[i]) for i in range(n_ensemble)]
     )
     print("Short term prediction errors: ", pred_short_error)
+
+    ac_pred_short_error = np.array(
+        [
+            errors.rel_L2(
+                sens.acoustic_energy_inst(data["short"]["y"], N_g),
+                sens.acoustic_energy_inst(Y_PRED_SHORT[i], N_g),
+            )
+            for i in range(n_ensemble)
+        ]
+    )
+    print("Acoustic energy short term prediction errors: ", ac_pred_short_error)
+
     best_idx = np.argmin(pred_short_error)
     print("Best idx: ", best_idx)
 
     # SHORT-TERM AND TIME-ACCURATE PREDICTION
     # Plot short term prediction timeseries of the best of ensemble
-    ax1 = subfigs[0].add_subplot(4, 1, 1)
-    vis.plot_lines(
-        data["short"]["t"] - data["short"]["t"][0],
-        data["short"]["y"][:, plt_idx[0]],
-        Y_PRED_SHORT[best_idx][:, plt_idx[0]],
-        ylabel=f"$\{plt_idx[0].name}$",
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color],
-    )
-    ax1.legend(["True", "ESN"], loc="center", bbox_to_anchor=[0.5, 1.2], ncol=2)
-    ax1.set_xticklabels([])
 
-    ax2 = subfigs[0].add_subplot(4, 1, 2)
+    for i in range(len(plt_idx)):
+        ax = subfigs[0].add_subplot(len(plt_idx) + 1, 1, i + 1)
+        vis.plot_lines(
+            data["short"]["t"] - data["short"]["t"][0],
+            data["short"]["y"][:, plt_idx[i]],
+            Y_PRED_SHORT[best_idx][:, plt_idx[i]],
+            xlabel="$t$",
+            ylabel=f"$\{plt_idx[i].name}$",
+            linestyle=[true_ls, pred_ls],
+            linewidth=[true_lw, pred_lw],
+            color=[true_color, pred_color],
+        )
+        # if i == 0:
+        #     ax.legend(["True", "ESN"], loc="center", bbox_to_anchor=[0.5, 1.2], ncol=2)
+        # if i < len(plt_idx)-1:
+        #     ax.set_xticklabels([])
+    ax = subfigs[0].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_lines(
         data["short"]["t"] - data["short"]["t"][0],
-        data["short"]["y"][:, plt_idx[1]],
-        Y_PRED_SHORT[best_idx][:, plt_idx[1]],
-        ylabel=f"$\{plt_idx[1].name}$",
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color],
-    )
-    ax2.set_xticklabels([])
-
-    ax3 = subfigs[0].add_subplot(4, 1, 3)
-    vis.plot_lines(
-        data["short"]["t"] - data["short"]["t"][0],
-        data["short"]["y"][:, plt_idx[2]],
-        Y_PRED_SHORT[best_idx][:, plt_idx[2]],
-        ylabel=f"$\{plt_idx[2].name}$",
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color],
-    )
-    ax3.set_xticklabels([])
-
-    ax4 = subfigs[0].add_subplot(4, 1, 4)
-    vis.plot_lines(
-        data["short"]["t"] - data["short"]["t"][0],
-        data["short"]["y"][:, plt_idx[3]],
-        Y_PRED_SHORT[best_idx][:, plt_idx[3]],
-        ylabel=f"$\{plt_idx[3].name}$",
+        sens.acoustic_energy_inst(data["short"]["y"], N_g),
+        sens.acoustic_energy_inst(Y_PRED_SHORT[best_idx], N_g),
         xlabel="$t$",
+        ylabel="$E_{ac}$",
         linestyle=[true_ls, pred_ls],
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
-
     # Plot phase plot of the best of ensemble
-    phase_space_steps = pp.get_steps(phase_space_steps_arr[p_idx], network_dt)
+    # phase_space_steps = pp.get_steps(phase_space_steps_arr[p_idx], network_dt)
 
-    ax5 = subfigs[1].add_subplot(2, 1, 1)
-    vis.plot_phase_space(
-        data["long"]["y"][-phase_space_steps:],
-        Y_PRED_LONG[best_idx][-phase_space_steps:],
-        idx_pair=plt_idx_pairs[0],
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_phase_lw, pred_phase_lw],
-        color=[true_color, pred_color],
-        xlabel=f"$\{plt_idx_pairs[0][0].name}$",
-        ylabel=f"$\{plt_idx_pairs[0][1].name}$",
-    )
+    # for i in range(len(plt_idx_pairs)):
+    #     ax = subfigs[1].add_subplot(len(plt_idx_pairs), 1, i+1)
+    #     vis.plot_phase_space(
+    #         data["long"]["y"][-phase_space_steps:],
+    #         Y_PRED_LONG[best_idx][-phase_space_steps:],
+    #         idx_pair=plt_idx_pairs[i],
+    #         linestyle=[true_ls, pred_ls],
+    #         linewidth=[true_phase_lw, pred_phase_lw],
+    #         color=[true_color, pred_color],
+    #         xlabel=f"$\{plt_idx_pairs[i][0].name}$",
+    #         ylabel=f"$\{plt_idx_pairs[i][1].name}$",
+    #     )
 
-    ax6 = subfigs[1].add_subplot(2, 1, 2)
-    vis.plot_phase_space(
-        data["long"]["y"][-phase_space_steps:],
-        Y_PRED_LONG[best_idx][-phase_space_steps:],
-        idx_pair=plt_idx_pairs[1],
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_phase_lw, pred_phase_lw],
-        color=[true_color, pred_color],
-        xlabel=f"$\{plt_idx_pairs[1][0].name}$",
-        ylabel=f"$\{plt_idx_pairs[1][1].name}$",
-    )
-
-    # # Plot statistics
-    ax7 = subfigs[2].add_subplot(2, 2, 1)
+    # Plot statistics
+    for i in range(len(plt_idx)):
+        ax = subfigs[1].add_subplot(len(plt_idx) + 1, 1, i + 1)
+        vis.plot_statistics_ensemble(
+            *[Y_PRED_LONG[e][:, plt_idx[i]] for e in range(n_ensemble)],
+            y_base=data["long"]["y"][:, plt_idx[i]],
+            xlabel=f"$\{plt_idx[i].name}$",
+            ylabel="PDF",
+            linestyle=[true_ls, pred_ls],
+            linewidth=[true_lw, pred_lw],
+            color=[true_color, pred_color],
+        )
+    ax = subfigs[1].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_statistics_ensemble(
-        *[Y_PRED_LONG[i][:, plt_idx[0]] for i in range(n_ensemble)],
-        y_base=data["long"]["y"][:, plt_idx[0]],
-        xlabel=f"$\{plt_idx[0].name}$",
+        *[sens.acoustic_energy_inst(Y_PRED_LONG[e], N_g) for e in range(n_ensemble)],
+        y_base=sens.acoustic_energy_inst(data["long"]["y"], N_g),
+        xlabel="$E_{ac}$",
         ylabel="PDF",
         linestyle=[true_ls, pred_ls],
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
 
-    ax8 = subfigs[2].add_subplot(2, 2, 3)
-    vis.plot_statistics_ensemble(
-        *[Y_PRED_LONG[i][:, plt_idx[1]] for i in range(n_ensemble)],
-        y_base=data["long"]["y"][:, plt_idx[1]],
-        xlabel=f"$\{plt_idx[1].name}$",
-        ylabel="PDF",
+    # # Plot ASD
+    for i in range(len(plt_idx)):
+        ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, i + 1)
+        omega, asd = get_asd(
+            network_dt,
+            data["long"]["y"][:, plt_idx[i]],
+            remove_mean=True,
+            periodic=periodic,
+        )
+        ASD_PRED = [None] * n_ensemble
+        OMEGA_PRED = [None] * n_ensemble
+        for e_idx in range(n_ensemble):
+            OMEGA_PRED[e_idx], ASD_PRED[e_idx] = get_asd(
+                network_dt,
+                Y_PRED_LONG[e_idx][:, plt_idx[i]],
+                remove_mean=True,
+                periodic=periodic,
+            )
+        vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
+            asd_y=ASD_PRED[best_idx],
+            omega_y=OMEGA_PRED[best_idx],
+            asd_y_base=asd,
+            omega_y_base=omega,
+            range=2,
+            xlabel="$\omega$",
+            ylabel=f"$ASD(\{plt_idx[i].name})$",
+            linestyle=[true_ls, pred_ls],
+            linewidth=[true_lw, pred_lw],
+            color=[true_color, pred_color],
+        )
+        plt.legend(["True", "ESN"], loc="upper right")
+    ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
+    omega, asd = get_asd(
+        network_dt,
+        sens.acoustic_energy_inst(data["long"]["y"], N_g),
+        remove_mean=True,
+        periodic=periodic,
+    )
+    ASD_PRED = [None] * n_ensemble
+    OMEGA_PRED = [None] * n_ensemble
+    for e_idx in range(n_ensemble):
+        OMEGA_PRED[e_idx], ASD_PRED[e_idx] = get_asd(
+            network_dt,
+            sens.acoustic_energy_inst(Y_PRED_LONG[e_idx], N_g),
+            periodic=periodic,
+        )
+    vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
+        asd_y=ASD_PRED[best_idx],
+        omega_y=OMEGA_PRED[best_idx],
+        asd_y_base=asd,
+        omega_y_base=omega,
+        range=10,
+        xlabel="$\omega$",
+        ylabel="$ASD(E_{ac})$",
         linestyle=[true_ls, pred_ls],
         linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color, pred_color],
+        color=[true_color, pred_color],
     )
-
-    ax9 = subfigs[2].add_subplot(2, 2, 2)
-    vis.plot_statistics_ensemble(
-        *[Y_PRED_LONG[i][:, plt_idx[2]] for i in range(n_ensemble)],
-        y_base=data["long"]["y"][:, plt_idx[2]],
-        xlabel=f"$\{plt_idx[2].name}$",
-        ylabel="PDF",
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color, pred_color],
-    )
-
-    ax10 = subfigs[2].add_subplot(2, 2, 4)
-    vis.plot_statistics_ensemble(
-        *[Y_PRED_LONG[i][:, plt_idx[3]] for i in range(n_ensemble)],
-        y_base=data["long"]["y"][:, plt_idx[3]],
-        xlabel=f"$\{plt_idx[3].name}$",
-        ylabel="PDF",
-        linestyle=[true_ls, pred_ls],
-        linewidth=[true_lw, pred_lw],
-        color=[true_color, pred_color, pred_color],
-    )
-
-if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+    plt.legend(["True", "ESN"], loc="upper right")
+    subfigs[0].suptitle(title, x=0.0, y=1.025)
+    if save_fig:
+        if len(test_param_list) == 1:
+            fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+        else:
+            fig.savefig(
+                f"paper/graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
+            )
 plt.show()

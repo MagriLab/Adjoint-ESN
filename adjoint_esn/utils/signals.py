@@ -75,9 +75,9 @@ def periodic_signal_peaks(x, T):
     return (start_pk_idx, end_pk_idx)
 
 
-def power_spectral_density(x, dt):
+def amplitude_spectrum(x, dt):
     """
-    Return the power spectral density of a signal.
+    Return the amplitude spectrum of a signal.
 
     Args:
     x: signal
@@ -85,7 +85,7 @@ def power_spectral_density(x, dt):
 
     Returns:
     omega: fourier frequencies
-    psd: one-sided power spectral density
+    asd: one-sided amplitude spectrum
 
     """
     # Get the signal length and number of signals
@@ -98,10 +98,17 @@ def power_spectral_density(x, dt):
     # Calculate the one-sided spectrum
     if signal_length % 2 == 1:  # signal length odd
         # then we only have 0 frequency at index 0
-        psd = 2 * np.abs(X_fft[1 : int((signal_length - 1) / 2) + 1] / signal_length)
-        omega = omega[1 : int((signal_length - 1) / 2) + 1]
+        asd_zero = np.abs(X_fft[0] / signal_length)
+        asd_nonzero = 2 * np.abs(
+            X_fft[1 : int((signal_length - 1) / 2) + 1] / signal_length
+        )
+        asd = np.hstack([asd_zero, asd_nonzero])
+        omega = omega[0 : int((signal_length - 1) / 2) + 1]
+
     elif signal_length % 2 == 0:  # signal length even
         # we have zero frequency at index 0, and pi/-pi frequency at index signal_length/2
-        psd = 2 * np.abs(X_fft[1 : int(signal_length / 2)] / signal_length)
-        omega = omega[1 : int(signal_length / 2)]
-    return omega, psd
+        asd_zero = np.abs(X_fft[0] / signal_length)
+        asd_nonzero = 2 * np.abs(X_fft[1 : int(signal_length / 2)] / signal_length)
+        asd = np.hstack([asd_zero, asd_nonzero])
+        omega = omega[0 : int(signal_length / 2)]
+    return omega, asd

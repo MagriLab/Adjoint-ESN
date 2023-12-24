@@ -1,3 +1,5 @@
+from enum import IntEnum
+
 import numpy as np
 
 
@@ -14,6 +16,18 @@ class Lorenz63:
     def params(self):
         """Returns a dictionary containing only the system parameters"""
         return {"beta": self.beta, "rho": self.rho, "sigma": self.sigma}
+
+    @staticmethod
+    def get_eVar():
+        var_list = ["x", "y", "z"]
+        eVar = IntEnum("eVar", var_list, start=0)
+        return eVar
+
+    @staticmethod
+    def get_eParamVar():
+        var_list = ["beta", "rho", "sigma"]
+        eParamVar = IntEnum("eParamVar", var_list, start=0)
+        return eParamVar
 
     def ode(self, u, t):
         """Lorenz63 system ode

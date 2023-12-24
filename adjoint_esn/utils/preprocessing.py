@@ -281,3 +281,96 @@ def create_dataset(
 
     # add something for the case when len(N_loop) = 0?
     return data
+
+
+# data loading and dataset creating functions that apply to general dynamical systems
+# as defined in the utils/dynamical_systems file
+def load_data_dyn_sys(
+    sys, params, sim_time, sim_dt, integrator="odeint", y_init=None, random_seed=None
+):
+    # Create system object
+    my_sys = sys(**params)
+
+    # set up initial conditions
+    if y_init is not None:
+        y0 = y_init
+    else:
+        rnd = np.random.RandomState(seed=random_seed)
+        y0 = rnd.randn(my_sys.N_dim)
+
+    # temporal grid
+    t = np.arange(0, sim_time + sim_dt, sim_dt)
+
+    # solve ODE using odeint
+    y = solve_ode.integrate(my_sys.ode, y0, t, integrator)
+    return my_sys, y, t
+
+
+def create_dataset_dyn_sys(
+    my_sys,
+    y,
+    t,
+    p,
+    network_dt,
+    transient_time,
+    washout_time,
+    loop_times,
+    input_vars,
+    param_vars,
+    noise_level=0,
+    random_seed=0,
+    loop_names=None,
+    start_idxs=None,
+):
+    y, t = upsample(y, t, network_dt)
+    y, t = discard_transient(y, t, transient_time)
+
+    # add noise
+    if noise_level > 0:
+        y = y + generate_noise(y, noise_level, random_seed)
+
+    # separate into washout and loops
+    N_washout, *N_loops = [
+        get_steps(t, network_dt) for t in [washout_time, *loop_times]
+    ]
+
+    # extract input-output variables
+    vars = my_sys.get_eVar()
+    input_var_idxs = [vars[input_var] for input_var in input_vars]
+    uu = y[:, input_var_idxs]
+    yy = y[:, input_var_idxs]
+
+    # create a dictionary to store the data
+    data = {}
+    start_idx = 0
+    for loop_idx, N_loop in enumerate(N_loops):
+        if start_idxs is not None:
+            start_idx = start_idxs[loop_idx]
+
+        # get washout and loop data
+        u_washout, u_loop, y_loop, t_loop = create_input_output(
+            uu[start_idx:], yy[start_idx:], t[start_idx:], N_washout, N_loop + 1
+        )
+        # set the parameters
+        p_list = [p[param_var] for param_var in param_vars]
+        p_washout = p_list * np.ones((len(u_washout), 1))
+        p_loop = p_list * np.ones((len(u_loop), 1))
+
+        if loop_names is not None:
+            loop_name = loop_names[loop_idx]
+        else:
+            loop_name = f"loop_{loop_idx}"
+        data[loop_name] = {
+            "u_washout": u_washout,
+            "p_washout": p_washout,
+            "u": u_loop,
+            "p": p_loop,
+            "y": y_loop,
+            "t": t_loop,
+        }
+
+        if start_idxs is None:
+            start_idx += N_washout + N_loop
+
+    # add something for the case when len(N_loop) = 0?
+    return data

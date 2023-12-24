@@ -17,14 +17,16 @@ import adjoint_esn.utils.visualizations as vis
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam
 
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 12})
+rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
 save_fig = True
 fig_name = "sensitivity"
 # N_reservoir = 1200, connectivity = 20
 model_path = Path("local_results/rijke/run_20231029_153121")
+
+# same washout, eta_1_init = 1.0
 save_paths_beta = [
-    # "20231114_162553", # tau = 0.07
+    "20231114_162553",  # tau = 0.07
     "20231113_101654",  # tau = 0.12
     # "20231114_121526", # tau = 0.17
     # "20231113_125101", # tau = 0.2
@@ -38,22 +40,36 @@ save_paths_tau = [
     "20231113_214746",  # beta = 2.5
     # "20231113_213932", # beta = 3.0
     "20231114_185152",  # beta = 3.75
-    # "20231113_040638", # beta = 4.5
+    "20231113_040638",  # beta = 4.5
 ]
-true_color = "black"
-pred_color = "red"
-true_lw = 2
-pred_lw = 2
+
+# not same washout, eta_1_init = 1.5
+save_paths_beta = [
+    "20231219_022703",  # tau = 0.07
+    "20231218_210035",  # tau = 0.12
+    "20231219_015234",  # tau = 0.22
+    "20231219_031239",  # tau = 0.32
+]
+save_paths_tau = [
+    "20231218_201438",  # beta = 1.25
+    "20231218_215207",  # beta = 2.5
+    "20231218_194028",  # beta = 3.75
+    "20231218_193704",  # beta = 4.5
+]
+true_color = "silver"
+pred_color = "tab:red"
+true_lw = 6.0
+pred_lw = 2.0
 true_ls = "-"
 pred_ls = "--"
-true_marker = "o"
-pred_marker = "+"
-true_ms = 4
-pred_ms = 5
+true_marker = "none"
+pred_marker = "none"
+true_ms = 6
+pred_ms = 8
 
-titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
+titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
 
-fig = plt.figure(figsize=(15, 5), constrained_layout=True)
+fig = plt.figure(figsize=(10, 10), constrained_layout=True)
 
 # print model properties
 config = post.load_config(model_path)
@@ -100,7 +116,8 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         # for i in param_list:
         #     ax=plt.subplot(2,2,2*k+1+i)
         i = eParam[vary_param]
-        ax = plt.subplot(2, len(save_paths), len(save_paths) * k + 1 + j)
+        ax = plt.subplot(len(save_paths), 2, k + 1 + 2 * j)
+        ax.set_title(titles[k + 2 * j], loc="left")
         vis.plot_lines(
             p_list[:, eParam[vary_param]],
             sens_results["dJdp"]["true"]["adjoint"][:, i],
@@ -119,11 +136,16 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
             alpha=0.2,
             antialiased=True,
             color=pred_color,
+            zorder=2,
         )
         plt.xlabel(f"$\\{vary_param}$")
         plt.ylabel(f"$dJ/d\\{i.name}$")
         plt.title(f"$\\{not_vary_param} = {p_list[0, eParam[not_vary_param]]}$")
-        plt.legend(["True", "ESN"], loc="lower center")
+        if j == 0 and k == 0:
+            plt.legend(["True", "ESN"], loc="upper left")
+        elif j == 0 and k == 1:
+            plt.legend(["True", "ESN"], loc="upper right")
+
         if plot_name == "varying_beta":
             ax.xaxis.set_major_locator(MultipleLocator(1))
         elif plot_name == "varying_tau":
@@ -132,5 +154,5 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         ax.grid(visible=True)
 
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_{fig_name}_2.png", bbox_inches="tight")
 plt.show()
