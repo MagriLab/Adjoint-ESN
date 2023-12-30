@@ -180,6 +180,7 @@ def main(_):
             sim_time=config.simulation.sim_time,
             sim_dt=config.simulation.sim_dt,
             random_seed=config.random_seed,
+            integrator=config.simulation.integrator,
         )
 
         regime_data = pp.create_dataset_dyn_sys(

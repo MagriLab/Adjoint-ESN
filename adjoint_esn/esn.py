@@ -754,14 +754,14 @@ class ESN:
         dfdp = np.multiply(self.dfdp_const, dtanh)
         return dfdp
 
-    def dydf_r1(self, N_g, x=None):
-        return self.W_out[: self.N_reservoir, : 2 * N_g].T
+    def dydf_r1(self, x=None):
+        return self.W_out[: self.N_reservoir, :].T
 
-    def dydf_r2(self, N_g, x):
+    def dydf_r2(self, x):
         # derivative of x**2 terms
         df = np.ones(self.N_reservoir)
         df[1::2] = 2 * x[1::2]
-        return np.multiply(self.W_out[: self.N_reservoir, : 2 * N_g].T, df)
+        return np.multiply(self.W_out[: self.N_reservoir, :].T, df)
 
     @property
     def dydf(self):
@@ -789,7 +789,15 @@ class ESN:
             if hasattr(self, attr):
                 delattr(self, attr)
 
-    def direct_sensitivity(self, X, Y, N, N_g):
+    def acoustic_energy(Y, N_g):
+        return 1 / 4 * np.mean(np.sum(Y[0 : 2 * N_g] ** 2, axis=1))
+
+    def dacoustic_energy(Y, N_g):
+        yy = np.zeros_like(Y)
+        yy[: 2 * N_g] = Y[: 2 * N_g]
+        return 1 / 2 * yy
+
+    def direct_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -807,6 +815,10 @@ class ESN:
         """
         # reset grad attributes
         self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
 
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
@@ -828,18 +840,18 @@ class ESN:
             q[i] = dfdp + np.dot(jac, q[i - 1])
 
             # get galerkin amplitudes
-            y_galerkin = Y[i, : 2 * N_g]
+            dJdy = dJdy_fun(Y[i])
 
             # gradient of objective with respect to reservoir states
-            dydf = self.dydf(N_g, X[i, :])
-            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf)
+            dydf = self.dydf(X[i, :])
+            dJdf = (1 / N) * np.dot(dJdy, dydf)
 
             # sensitivity to parameters
             dJdp += np.dot(dJdf, q[i])
 
         return dJdp
 
-    def adjoint_sensitivity(self, X, Y, N, N_g):
+    def adjoint_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using ADJOINT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -858,6 +870,10 @@ class ESN:
         # reset grad attributes
         self.reset_grad_attrs()
 
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
 
@@ -866,12 +882,12 @@ class ESN:
 
         # integrate backwards
         # predict galerkin amplitudes
-        y_galerkin = Y[N, : 2 * N_g]
+        dJdy = dJdy_fun(Y[N])
 
         # terminal condition,
         # i.e. gradient of the objective at the terminal state
-        dydf = self.dydf(N_g, X[N, :])
-        v[N] = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+        dydf = self.dydf(X[N, :])
+        v[N] = (1 / N) * np.dot(dJdy, dydf).T
 
         for i in np.arange(N, 0, -1):
             dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
@@ -882,12 +898,12 @@ class ESN:
             # sensitivity to parameters
             dJdp += np.dot(v[i], dfdp)
 
-            # get galerkin amplitudes
-            y_galerkin = Y[i - 1, : 2 * N_g]
+            # get the derivative of the objective with respect to the outputs
+            dJdy = dJdy_fun(Y[i - 1])
 
             # gradient of objective with respect to reservoir states
-            dydf = self.dydf(N_g, X[i - 1, :])
-            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+            dydf = self.dydf(X[i - 1, :])
+            dJdf = (1 / N) * np.dot(dJdy, dydf).T
 
             # jacobian of the reservoir dynamics
             jac = self.jac(dtanh, X[i - 1, :])
@@ -949,7 +965,9 @@ class ESN:
 
     #     return dJdp
 
-    def finite_difference_sensitivity(self, X, Y, P, N, N_g, h=1e-5, method="central"):
+    def finite_difference_sensitivity(
+        self, X, Y, P, N, h=1e-5, method="central", J_fun=None, N_g=None
+    ):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using CENTRAL FINITE DIFFERENCES
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -969,8 +987,11 @@ class ESN:
         # initialize sensitivity
         dJdp = np.zeros((self.N_param_dim))
 
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy, N_g=N_g)
+
         # compute the energy of the base
-        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * N_g] ** 2, axis=1))
+        J = J_fun(Y[1:])
 
         # define which finite difference method to use
         finite_difference = partial(finite_differences, method=method)
@@ -983,8 +1004,8 @@ class ESN:
             P_right[:, i] += h
             _, Y_left = self.closed_loop(X[0, :], N, P_left)
             _, Y_right = self.closed_loop(X[0, :], N, P_right)
-            J_left = 1 / 4 * np.mean(np.sum(Y_left[1:, 0 : 2 * N_g] ** 2, axis=1))
-            J_right = 1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * N_g] ** 2, axis=1))
+            J_left = J_fun(Y_left[1:])
+            J_right = J_fun(Y_right[1:])
 
             dJdp[i] = finite_difference(J, J_right, J_left, h)
 

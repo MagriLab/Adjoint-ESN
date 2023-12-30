@@ -15,6 +15,7 @@ def get_config():
     config.simulation.sim_time = 300
     config.simulation.sim_dt = 1e-3
     config.simulation.transient_time = 20
+    config.simulation.integrator = "rk4"
     config.simulation.noise_level = 0  # percent
 
     # model configuration

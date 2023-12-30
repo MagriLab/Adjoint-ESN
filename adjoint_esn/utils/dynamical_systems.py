@@ -11,6 +11,7 @@ class Lorenz63:
         self.sigma = sigma
         self.t_lyap = t_lyap
         self.N_dim = 3
+        self.N_param = 3
 
     @property
     def params(self):
@@ -46,10 +47,17 @@ class Lorenz63:
         u: state vector, contains x, y, z
         """
         x, y, z = u
-        dFdu = np.array(
+        dfdu = np.array(
             [[-self.sigma, self.sigma, 0], [self.rho - z, -1, -x], [y, x, -self.beta]]
         )
-        return dFdu
+        return dfdu
+
+    def dfdp(self, u):
+        x, y, z = u
+        dfdbeta = np.array([0, 0, -z])
+        dfdrho = np.array([0, x, 0])
+        dfdsigma = np.array([y - x, 0, 0])
+        return np.hstack([dfdbeta[:, None], dfdrho[:, None], dfdsigma[:, None]])
 
 
 class Lorenz96:
