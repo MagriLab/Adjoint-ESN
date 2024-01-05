@@ -18,8 +18,7 @@ class Lorenz63:
         """Returns a dictionary containing only the system parameters"""
         return {"beta": self.beta, "rho": self.rho, "sigma": self.sigma}
 
-    @staticmethod
-    def get_eVar():
+    def get_eVar(self):
         var_list = ["x", "y", "z"]
         eVar = IntEnum("eVar", var_list, start=0)
         return eVar
@@ -61,14 +60,27 @@ class Lorenz63:
 
 
 class Lorenz96:
-    def __init__(self, p, t_lyap=None):
+    def __init__(self, p, N_dim=10, t_lyap=None):
         self.p = p
         self.t_lyap = t_lyap
+        self.N_dim = N_dim
+        self.N_param = 1
 
     @property
     def params(self):
         """Returns a dictionary containing only the system parameters"""
         return {"p": self.p}
+
+    def get_eVar(self):
+        var_list = [f"x{i}" for i in np.arange(1, self.N_dim + 1)]
+        eVar = IntEnum("eVar", var_list, start=0)
+        return eVar
+
+    @staticmethod
+    def get_eParamVar():
+        var_list = ["p"]
+        eParamVar = IntEnum("eParamVar", var_list, start=0)
+        return eParamVar
 
     def ode(self, x, t):
         """Lorenz96 system ode
@@ -83,13 +95,16 @@ class Lorenz96:
         x: state vector
         """
         D = len(x)
-        dFdx = np.zeros((D, D), dtype="float")
+        dfdx = np.zeros((D, D), dtype="float")
         for i in range(D):
-            dFdx[i, (i - 1) % D] = x[(i + 1) % D] - x[(i - 2) % D]
-            dFdx[i, (i + 1) % D] = x[(i - 1) % D]
-            dFdx[i, (i - 2) % D] = -x[(i - 1) % D]
-            dFdx[i, i] = -1.0
-        return dFdx
+            dfdx[i, (i - 1) % D] = x[(i + 1) % D] - x[(i - 2) % D]
+            dfdx[i, (i + 1) % D] = x[(i - 1) % D]
+            dfdx[i, (i - 2) % D] = -x[(i - 1) % D]
+            dfdx[i, i] = -1.0
+        return dfdx
+
+    def dfdp(self, x):
+        return np.ones((self.N_dim, 1))
 
 
 class RoesslerLorenz:
