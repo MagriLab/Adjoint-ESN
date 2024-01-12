@@ -34,12 +34,12 @@ def main(args):
     )  # rijke with reservoir
     data_dir = Path("data")
 
-    test_sim_time = 50
-    n_loops = 10
+    test_sim_time = 1100
+    n_loops = 1000
     test_loop_times = [test_sim_time]
-    test_loop_time_arr = [0.5]
+    test_loop_time_arr = [1.0]
     test_transient_time = 20.0
-    n_ensemble = 3
+    n_ensemble = 10
 
     if len(args.beta) == 3:
         beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
@@ -205,6 +205,10 @@ def main(args):
             integrator=config.simulation.integrator,
             y_init=args.y_init,
         )
+        if args.same_washout:
+            test_washout_time = config.model.washout_time
+        else:
+            test_washout_time = 0
         data = pp.create_dataset_dyn_sys(
             my_sys,
             y_sim,
@@ -212,7 +216,7 @@ def main(args):
             p_sim,
             network_dt=config.model.network_dt,
             transient_time=test_transient_time,
-            washout_time=config.model.washout_time,
+            washout_time=test_washout_time,
             loop_times=test_loop_times,
             input_vars=config.model.input_vars,
             param_vars=config.model.param_vars,
@@ -281,9 +285,6 @@ def main(args):
             # initialise the reservoir states before washout
             N = len(data["loop_0"]["u"])
 
-            N_transient_test = pp.get_steps(
-                test_transient_time, config.model.network_dt
-            )
             if args.same_washout == True:
                 # predict on the whole timeseries
                 X_pred, Y_pred = my_ESN.closed_loop_with_washout(
@@ -294,12 +295,16 @@ def main(args):
                 )
             else:
                 # let evolve for a longer time and then remove washout
+                N_transient_test = pp.get_steps(test_transient_time, config.model.network_dt)
+                N_washout = pp.get_steps(config.model.washout_time, config.model.network_dt)
                 N_long = N_transient_test + N
+
+                P_washout = data["loop_0"]["p"][0] * np.ones((N_washout, 1))
                 P_long = data["loop_0"]["p"][0] * np.ones((N_long, 1))
                 X_pred, Y_pred = my_ESN.closed_loop_with_washout(
                     U_washout=u_washout_auto,
                     N_t=N_long,
-                    P_washout=data["loop_0"]["p_washout"],
+                    P_washout=P_washout,
                     P=P_long,
                 )
 
