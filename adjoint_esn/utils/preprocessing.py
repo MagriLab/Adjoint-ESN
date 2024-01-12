@@ -130,7 +130,7 @@ def load_data(
     return y, t
 
 
-def create_state(y, N_g, include, N_c=10, u_f_order=0):
+def create_state(y, N_g, include, N_c=10, u_f_order=0, N_tau=0):
     # choose which variables to pass in the state vector
     if not include:
         # get galerkin amplitudes
@@ -150,7 +150,10 @@ def create_state(y, N_g, include, N_c=10, u_f_order=0):
         # augment the input with the time delayed velocity, u_f(t-tau)
         u_f_idx = 2 * N_g + N_c - 1
         for order in range(u_f_order):
-            y_new = np.hstack((y_new, y[:, u_f_idx][:, None] ** (order + 1)))
+            # y_new = np.hstack((y_new, y[:, u_f_idx][:, None] ** (order + 1)))
+            eta_tau = np.vstack((np.zeros((N_tau, N_g)), y[:-N_tau, :N_g]))
+            u_f_tau = Rijke.toVelocity(N_g, eta_tau, x=0.2)
+            y_new = np.hstack((y_new, u_f_tau ** (order + 1)))
     else:
         raise ValueError("Not valid include.")
     return y_new
@@ -228,6 +231,7 @@ def create_dataset(
     u_f_order,
     noise_level=0,
     random_seed=0,
+    tau=0,
     loop_names=None,
     start_idxs=None,
 ):
@@ -239,8 +243,9 @@ def create_dataset(
         y = y + generate_noise(y, noise_level, random_seed)
 
     # choose input and output states
-    uu = choose_state(input_vars)(y, N_g=N_g, u_f_order=u_f_order)
-    yy = choose_state(output_vars)(y, N_g=N_g, u_f_order=u_f_order)
+    N_tau = int(np.round(tau / network_dt))
+    uu = choose_state(input_vars)(y, N_g=N_g, u_f_order=u_f_order, N_tau=N_tau)
+    yy = choose_state(output_vars)(y, N_g=N_g, u_f_order=u_f_order, N_tau=N_tau)
 
     # separate into washout and loops
     N_washout, *N_loops = [

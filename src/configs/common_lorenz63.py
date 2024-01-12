@@ -9,11 +9,11 @@ def get_config():
     # simulation configuration
     config.simulation = ml_collections.ConfigDict()
 
-    config.simulation.beta_list = [4 / 3, 8 / 3, 16 / 3]
+    config.simulation.beta_list = [8 / 3]
     config.simulation.rho_list = [30, 35, 40, 45, 50]
     config.simulation.sigma_list = [10]
     config.simulation.sim_time = 300
-    config.simulation.sim_dt = 1e-3
+    config.simulation.sim_dt = 1e-2
     config.simulation.transient_time = 20
     config.simulation.integrator = "rk4"
     config.simulation.noise_level = 0  # percent
@@ -24,7 +24,7 @@ def get_config():
     config.model.network_dt = 1e-2
     config.model.washout_time = 4
     config.model.input_vars = ["x", "y", "z"]
-    config.model.param_vars = ["beta", "rho"]
+    config.model.param_vars = ["rho"]
 
     config.model.reservoir_size = 300
     config.model.connectivity = 3
@@ -93,21 +93,6 @@ def get_config():
     )
 
     config.val.hyperparameters.parameter_normalization_var = ml_collections.ConfigDict()
-
-    # BETA
-    config.val.hyperparameters.parameter_normalization_mean.beta = (
-        ml_collections.ConfigDict()
-    )
-    config.val.hyperparameters.parameter_normalization_mean.beta.min = -5.0
-    config.val.hyperparameters.parameter_normalization_mean.beta.max = 5.0
-    config.val.hyperparameters.parameter_normalization_mean.beta.scale = "uniform"
-
-    config.val.hyperparameters.parameter_normalization_var.beta = (
-        ml_collections.ConfigDict()
-    )
-    config.val.hyperparameters.parameter_normalization_var.beta.min = 0.01
-    config.val.hyperparameters.parameter_normalization_var.beta.max = 10.0
-    config.val.hyperparameters.parameter_normalization_var.beta.scale = "log10"
 
     # RHO
     config.val.hyperparameters.parameter_normalization_mean.rho = (

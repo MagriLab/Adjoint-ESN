@@ -21,7 +21,7 @@ def create_ESN(ESN_dict, model_type, hyp_param_names, hyp_param_scales, hyp_para
     return my_ESN
 
 
-def get_ESN_properties_from_results(config, results, dim, top_idx = 0):
+def get_ESN_properties_from_results(config, results, dim, top_idx=0):
     # which system parameter is passed to the ESN
     param_vars = config.model.param_vars
 
@@ -35,13 +35,16 @@ def get_ESN_properties_from_results(config, results, dim, top_idx = 0):
         "reservoir_weights_mode": config.model.reservoir_weights_mode,
         "tikhonov": config.train.tikhonov,
     }
-    if config.model.type == "standard":
+    try:
+        if config.model.type == "standard":
+            ESN_dict["dimension"] = dim
+        elif config.model.type == "rijke":
+            ESN_dict["N_g"] = config.simulation.N_g
+            ESN_dict["x_f"] = 0.2
+            ESN_dict["dt"] = config.model.network_dt
+            ESN_dict["u_f_order"] = config.model.u_f_order
+    except:
         ESN_dict["dimension"] = dim
-    elif config.model.type == "rijke":
-        ESN_dict["N_g"] = config.simulation.N_g
-        ESN_dict["x_f"] = 0.2
-        ESN_dict["dt"] = config.model.network_dt
-        ESN_dict["u_f_order"] = config.model.u_f_order
 
     print("System dimension: ", dim)
 

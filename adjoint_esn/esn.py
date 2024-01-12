@@ -630,9 +630,14 @@ class ESN:
         # constant part of gradient of x(i+1) with respect to u_in(i)
         # sparse matrix
         if not hasattr(self, "_dfdu_const"):
-            self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
-                1.0 / self.norm_in[1][: self.N_dim]
-            )
+            try:
+                self._dfdu_const = self.alpha * self.W_in[:, : self.N_dim].multiply(
+                    1.0 / self.norm_in[1][: self.N_dim]
+                )
+            except:
+                self._dfdu_const = self.alpha * np.multiply(
+                    self.W_in[:, : self.N_dim], 1.0 / self.norm_in[1][: self.N_dim]
+                )
         return self._dfdu_const
 
     @property
@@ -731,10 +736,15 @@ class ESN:
     def dfdp_const(self):
         # constant part of gradient of x(i+1) with respect to p
         if not hasattr(self, "_dfdp_const"):
-            self._dfdp_const = self.alpha * self.W_in[:, -self.N_param_dim :].multiply(
-                1.0 * self.norm_p[1]
-            )
-            self._dfdp_const = self._dfdp_const.toarray()
+            try:
+                self._dfdp_const = self.alpha * self.W_in[
+                    :, -self.N_param_dim :
+                ].multiply(1.0 * self.norm_p[1])
+                self._dfdp_const = self._dfdp_const.toarray()
+            except:
+                self._dfdp_const = self.alpha * np.multiply(
+                    self.W_in[:, -self.N_param_dim :], 1.0 * self.norm_p[1]
+                )
         return self._dfdp_const
 
     def dfdp(self, dtanh):
