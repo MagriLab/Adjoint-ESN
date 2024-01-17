@@ -34,12 +34,12 @@ def main(args):
     )  # rijke with reservoir
     data_dir = Path("data")
 
-    test_sim_time = 1100
-    n_loops = 1000
-    test_loop_times = [test_sim_time]
-    test_loop_time_arr = [1.0]
+    n_loops = args.n_loops
+    test_loop_time_arr = args.loop_times
     test_transient_time = 20.0
-    n_ensemble = 10
+    test_sim_time = args.n_loops * max(args.loop_times) + 100.0
+    test_loop_times = [test_sim_time]
+    n_ensemble = args.n_ensemble_esn
 
     if len(args.beta) == 3:
         beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
@@ -147,7 +147,10 @@ def main(args):
         # fix the seeds
         input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
         reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
-
+        if n_ensemble == 1:
+            input_seeds = [5, 6, 7]
+            reservoir_seeds = [8, 9]
+            
         # expand the ESN dict with the fixed seeds
         ESN_dict["input_seeds"] = input_seeds
         ESN_dict["reservoir_seeds"] = reservoir_seeds
@@ -221,13 +224,14 @@ def main(args):
             input_vars=config.model.input_vars,
             param_vars=config.model.param_vars,
         )
-        print("Running true.")
+        print("Running true.", flush = True)
         for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
-            # print("Loop time:", test_loop_time)
+            print("Loop time:", test_loop_time)
             N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
 
             for loop_idx in range(n_loops):
-                print(f"Loop {loop_idx}")
+                if loop_idx % 50 == 0:
+                    print(f"Loop {loop_idx}", flush = True)
                 # split the simulation data
                 t_bar = data["loop_0"]["t"][
                     loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
@@ -279,7 +283,7 @@ def main(args):
                 # print(f'True J = {J["true"][p_idx,loop_idx,loop_time_idx]}', flush=True)
 
         for esn_idx in range(n_ensemble):
-            print(f"Running ESN {esn_idx}.")
+            print(f"Running ESN {esn_idx}.", flush = True)
             my_ESN = ESN_list[esn_idx]
             # Wash-out phase to get rid of the effects of reservoir states initialised as zero
             # initialise the reservoir states before washout
@@ -313,10 +317,11 @@ def main(args):
                 Y_pred = Y_pred[N_transient_test:, :]
 
             for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
-                print("Loop time:", test_loop_time)
+                print("Loop time:", test_loop_time, flush = True)
                 N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
                 for loop_idx in range(n_loops):
-                    # print(f"Loop {loop_idx}")
+                    if loop_idx % 50 == 0:
+                        print(f"Loop {loop_idx}", flush = True)
                     # split the prediction data
                     t_loop = data["loop_0"]["t"][
                         loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
@@ -379,6 +384,7 @@ def main(args):
         "sigma_list": sigma_list,
         "same_washout": args.same_washout,
         "y_init": args.y_init,
+        "loop_times": args.loop_times,
     }
 
     print(f"Saving results to {model_path}.", flush=True)
@@ -396,5 +402,8 @@ if __name__ == "__main__":
     parser.add_argument("--sigma", nargs="+", type=float)
     parser.add_argument("--same_washout", default=False, action="store_true")
     parser.add_argument("--y_init", nargs="+", type=float)
+    parser.add_argument("--n_loops", default=1000, type=int)
+    parser.add_argument("--n_ensemble_esn", default=5, type=int)
+    parser.add_argument("--loop_times", nargs="+", type=float)
     parsed_args = parser.parse_args()
     main(parsed_args)
