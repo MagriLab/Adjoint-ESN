@@ -52,11 +52,15 @@ def plot_phase_space(
 
 
 def plot_statistics(
-    *y, xlabel=None, ylabel=None, legend=None, title=None, **line_specs
+    *y,
+    n_bins=100,
+    xlabel=None,
+    ylabel=None,
+    legend=None,
+    title=None,
+    **line_specs,
 ):
     # Histogram option
-    n_bins = 100
-
     for i, yy in enumerate(y):
         density = stats.gaussian_kde(yy)
         n, x = np.histogram(yy, n_bins, density=True)
@@ -114,7 +118,7 @@ def plot_asd_ensemble(
     ylabel=None,
     legend=None,
     title=None,
-    **line_specs
+    **line_specs,
 ):
     plt.plot(omega, asd_y_base, **get_line_specs(line_specs, 0))
 
@@ -151,7 +155,7 @@ def plot_asd(
     ylabel=None,
     legend=None,
     title=None,
-    **line_specs
+    **line_specs,
 ):
     plt.plot(omega_y_base, asd_y_base, **get_line_specs(line_specs, 0))
 

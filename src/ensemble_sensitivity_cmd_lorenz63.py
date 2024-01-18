@@ -32,13 +32,9 @@ def main(args):
     model_path = Path(
         "local_results/lorenz63/run_20240105_140530"
     )  # rijke with reservoir
-    data_dir = Path("data")
 
     n_loops = args.n_loops
     test_loop_time_arr = args.loop_times
-    test_transient_time = 20.0
-    test_sim_time = args.n_loops * max(args.loop_times) + 100.0
-    test_loop_times = [test_sim_time]
     n_ensemble = args.n_ensemble_esn
 
     if len(args.beta) == 3:
@@ -150,7 +146,7 @@ def main(args):
         if n_ensemble == 1:
             input_seeds = [5, 6, 7]
             reservoir_seeds = [8, 9]
-            
+
         # expand the ESN dict with the fixed seeds
         ESN_dict["input_seeds"] = input_seeds
         ESN_dict["reservoir_seeds"] = reservoir_seeds
@@ -187,6 +183,17 @@ def main(args):
         "esn": np.zeros((n_ensemble, len(p_list), n_loops, len(test_loop_time_arr))),
     }
 
+    test_transient_time = config.simulation.transient_time
+    # when running with same_washout=True, loops start after the washout
+    # when running with same_washout=False, loops start after the transient
+    # that's why the initial condition of the first loop changes
+    if args.same_washout:
+        test_washout_time = config.model.washout_time
+    else:
+        test_washout_time = 0
+    test_sim_time = max(args.loop_times) + test_transient_time + test_washout_time
+    test_loop_times = [max(args.loop_times)]
+
     for p_idx, p in enumerate(p_list):
         p_sim = {"beta": p[eParam.beta], "rho": p[eParam.rho], "sigma": p[eParam.sigma]}
 
@@ -208,10 +215,7 @@ def main(args):
             integrator=config.simulation.integrator,
             y_init=args.y_init,
         )
-        if args.same_washout:
-            test_washout_time = config.model.washout_time
-        else:
-            test_washout_time = 0
+        print(y_sim[0])
         data = pp.create_dataset_dyn_sys(
             my_sys,
             y_sim,
@@ -224,23 +228,23 @@ def main(args):
             input_vars=config.model.input_vars,
             param_vars=config.model.param_vars,
         )
-        print("Running true.", flush = True)
+        print("Running true.", flush=True)
         for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
             print("Loop time:", test_loop_time)
-            N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
-
+            y_init_prev = data["loop_0"]["u"][0]
             for loop_idx in range(n_loops):
                 if loop_idx % 50 == 0:
-                    print(f"Loop {loop_idx}", flush = True)
-                # split the simulation data
-                t_bar = data["loop_0"]["t"][
-                    loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                ]
-                t_bar = t_bar - t_bar[0]
-                y_bar = data["loop_0"]["u"][
-                    loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                ]
-
+                    print(f"Loop {loop_idx}")
+                my_sys, y_bar, t_bar = pp.load_data_dyn_sys(
+                    Lorenz63,
+                    p_sim,
+                    sim_time=test_loop_time,
+                    sim_dt=config.simulation.sim_dt,
+                    integrator=config.simulation.integrator,
+                    y_init=y_init_prev,
+                )
+                y_init_prev = y_bar[-1]
+                # print(y_bar[0])
                 for method_name in methods:
                     if method_name == "direct":
                         dJdp["true"][method_name][
@@ -283,12 +287,11 @@ def main(args):
                 # print(f'True J = {J["true"][p_idx,loop_idx,loop_time_idx]}', flush=True)
 
         for esn_idx in range(n_ensemble):
-            print(f"Running ESN {esn_idx}.", flush = True)
+            print(f"Running ESN {esn_idx}.", flush=True)
             my_ESN = ESN_list[esn_idx]
             # Wash-out phase to get rid of the effects of reservoir states initialised as zero
             # initialise the reservoir states before washout
             N = len(data["loop_0"]["u"])
-
             if args.same_washout == True:
                 # predict on the whole timeseries
                 X_pred, Y_pred = my_ESN.closed_loop_with_washout(
@@ -299,8 +302,12 @@ def main(args):
                 )
             else:
                 # let evolve for a longer time and then remove washout
-                N_transient_test = pp.get_steps(test_transient_time, config.model.network_dt)
-                N_washout = pp.get_steps(config.model.washout_time, config.model.network_dt)
+                N_transient_test = pp.get_steps(
+                    test_transient_time, config.model.network_dt
+                )
+                N_washout = pp.get_steps(
+                    config.model.washout_time, config.model.network_dt
+                )
                 N_long = N_transient_test + N
 
                 P_washout = data["loop_0"]["p"][0] * np.ones((N_washout, 1))
@@ -316,26 +323,20 @@ def main(args):
                 X_pred = X_pred[N_transient_test:, :]
                 Y_pred = Y_pred[N_transient_test:, :]
 
+            x_init_prev = X_pred[0]
             for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
-                print("Loop time:", test_loop_time, flush = True)
+                print("Loop time:", test_loop_time, flush=True)
                 N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
+                p_loop = data["loop_0"]["p"][0:N_loop]
                 for loop_idx in range(n_loops):
                     if loop_idx % 50 == 0:
-                        print(f"Loop {loop_idx}", flush = True)
+                        print(f"Loop {loop_idx}", flush=True)
                     # split the prediction data
-                    t_loop = data["loop_0"]["t"][
-                        loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                    ]
-                    t_loop = t_loop - t_loop[0]
-                    x_pred_loop = X_pred[
-                        loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                    ]
-                    y_pred_loop = Y_pred[
-                        loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                    ]
-                    p_loop = data["loop_0"]["p"][
-                        loop_idx * N_loop : (loop_idx + 1) * N_loop + 1
-                    ]
+                    x_pred_loop, y_pred_loop = my_ESN.closed_loop(
+                        x0=x_init_prev, N_t=N_loop, P=p_loop
+                    )
+                    x_init_prev = x_pred_loop[-1]
+                    # print(y_pred_loop[0])
                     for method_name in methods:
                         if method_name == "direct":
                             dJdp["esn"]["direct"][

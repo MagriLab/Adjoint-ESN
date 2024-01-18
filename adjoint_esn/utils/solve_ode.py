@@ -75,7 +75,7 @@ def integrate(ode, u0, t, integrator="odeint", data_path=None, params=None, args
     # set the integrator
     integrator = integrators_dict[integrator]
     # integrate
-    print("Running solver.")
+    # print("Running solver.")
     u = integrator(ode, u0, t, args)
 
     # write to h5 file if data path is given
