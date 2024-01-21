@@ -304,7 +304,7 @@ def load_data_dyn_sys(
         y0 = rnd.randn(my_sys.N_dim)
 
     # temporal grid
-    t = np.arange(0, sim_time + sim_dt, sim_dt)
+    t = np.linspace(0, sim_time, int(np.round(sim_time / sim_dt)) + 1)
 
     # solve ODE using odeint
     y = solve_ode.integrate(my_sys.ode, y0, t, integrator)
