@@ -14,6 +14,7 @@ from datetime import datetime
 
 import adjoint_esn.utils.flags as myflags
 from adjoint_esn.utils import errors
+from adjoint_esn.utils import lyapunov as lyap
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils import scalers
 from adjoint_esn.utils.dynamical_systems import Lorenz63
@@ -62,6 +63,30 @@ def check_config_errors(config):
             "If the model is in input_only_mode, "
             "spectral radius should not be a hyperparameter."
         )
+
+
+def Lyapunov_Time(sys, params, transient_time, sim_dt, integrator):
+    sim_time = 200 + transient_time
+    my_sys, y_sim, t_sim = pp.load_data_dyn_sys(
+        sys, params, sim_time, sim_dt, y_init=[-2.4, -3.7, 14.98], integrator=integrator
+    )
+    y, t = pp.discard_transient(y_sim, t_sim, transient_time)
+    LEs, _, _, _ = lyap.calculate_LEs(
+        sys=my_sys,
+        sys_type="continuous",
+        X=y,
+        t=t,
+        transient_time=transient_time,
+        dt=sim_dt,
+        target_dim=None,
+        norm_step=1,
+    )
+    LEs_target = LEs[-1]
+    LT = 1 / LEs_target[0]
+    if LT <= 0:
+        return 1
+    else:
+        return LT
 
 
 def main(_):
@@ -172,6 +197,7 @@ def main(_):
             "t": [],
         }
 
+    LT = np.zeros(len(param_list))
     for p_idx, p in enumerate(param_list):
         p_sim = {"beta": p[eParam.beta], "rho": p[eParam.rho], "sigma": p[eParam.sigma]}
         my_sys, y_sim, t_sim = pp.load_data_dyn_sys(
@@ -204,6 +230,14 @@ def main(_):
                 DATA[loop_name][var].append(regime_data[loop_name][var])
                 for var in DATA[loop_name].keys()
             ]
+
+        LT[p_idx] = Lyapunov_Time(
+            Lorenz63,
+            p_sim,
+            config.simulation.transient_time,
+            config.simulation.sim_dt,
+            config.simulation.integrator,
+        )
 
     # dimension of the inputs
     dim = DATA["train"]["u"][0].shape[1]
@@ -272,6 +306,22 @@ def main(_):
         "tikhonov": config.train.tikhonov,
     }
 
+    try:
+        if config.model.normalize_input == "mean_std":
+            data_stacked = np.vstack(DATA["train"]["u"])
+            data_mean = np.mean(data_stacked, axis=0)
+            data_std = np.std(data_stacked, axis=0)
+            ESN_dict["input_normalization"] = [data_mean, data_std]
+        elif config.model.normalize_input == "mean_maxmin":
+            data_mean = np.mean(data_stacked, axis=0)
+            data_max_min = np.max(data_stacked, axis=0) - np.min(data_stacked, axis=0)
+            ESN_dict["input_normalization"] = [data_mean, data_max_min]
+
+        if config.model.add_output_bias == True:
+            ESN_dict["output_bias"] = np.array([1.0])
+    except:
+        pass
+
     print("Starting validation.", flush=True)
     min_dict = validate(
         grid_range,
@@ -299,6 +349,8 @@ def main(_):
         p_list=param_list,
         random_seed=config.random_seed,
         error_measure=getattr(errors, config.val.error_measure),
+        LT=LT,
+        network_dt=config.model.network_dt,
     )
 
     results = {

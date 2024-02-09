@@ -117,6 +117,8 @@ def loop(
     p_list=None,
     ESN_type="standard",  # "standard" or "rijke"
     error_measure=errors.rmse,
+    LT=None,  # only needed if error measure predictability horizon
+    network_dt=None,  # only needed if error measure predictability horizon
 ):
     # initialize a base ESN object with unit input scaling and spectral radius
     # seeds not given, so the random generator creates a different seed each run
@@ -179,12 +181,10 @@ def loop(
             # set the time delay for rijke esn
             if ESN_type == "rijke" and p_list.shape[1] == 2:
                 my_ESN.tau = p_list[val_idx, 1]
-
             print("Val regime:", val_idx_idx)
 
             # validate with different folds
             fold_error = np.zeros(n_folds)
-
             for fold in range(n_folds):
                 # select washout and validation
                 # start_step = fold * (N_val-N_washout)
@@ -218,9 +218,15 @@ def loop(
                 Y_val_pred = Y_val_pred[1:, :]
 
                 # compute error
-                fold_error[fold] = error_measure(
-                    Y_val_fold[N_trans:], Y_val_pred[N_trans:]
-                )
+                if error_measure == errors.predictability_horizon:
+                    tt = np.arange(0, len(Y_val_fold[N_trans:])) * network_dt
+                    fold_error[fold] = -error_measure(
+                        Y_val_fold[N_trans:], Y_val_pred[N_trans:], t=tt, LT=LT[val_idx]
+                    )
+                else:
+                    fold_error[fold] = error_measure(
+                        Y_val_fold[N_trans:], Y_val_pred[N_trans:]
+                    )
                 # print("Fold:", fold, ", fold error: ", fold_error[fold])
             # average over intervals
             val_error[val_idx_idx] = np.mean(fold_error)
@@ -267,6 +273,8 @@ def validate(
     n_grid=None,
     random_seed=10,
     error_measure=errors.rmse,
+    LT=None,
+    network_dt=None,
 ):
     n_param = len(param_names)  # number of parameters
 
@@ -321,6 +329,8 @@ def validate(
         ESN_type=ESN_type,
         p_list=p_list,
         error_measure=error_measure,
+        LT=LT,
+        network_dt=network_dt,
     )
 
     res = run_gp_optimization(
