@@ -26,7 +26,7 @@ def main(args):
 
     # iterate over the files in the folder
     for hyp_file_name in hyp_folder_path.iterdir():
-        if "20240109_15" in hyp_file_name.as_posix():
+        if "20240204" in hyp_file_name.as_posix():
             print(hyp_file_name)
             config = load_config(hyp_file_name).to_dict()
             try:
@@ -65,9 +65,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Uploads results to wandb")
-    parser.add_argument("--hyp_folder_name", type=str, default="local_results/lorenz96")
+    parser.add_argument("--hyp_folder_name", type=str, default="local_results/lorenz63")
     # arguments for weights and biases
     parser.add_argument("--wandb-entity", default="defneozan", type=str)
-    parser.add_argument("--wandb-project", default="adjoint-esn-lorenz96", type=str)
+    parser.add_argument("--wandb-project", default="adjoint-esn-lorenz63", type=str)
     parsed_args = parser.parse_args()
     main(parsed_args)

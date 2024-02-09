@@ -15,7 +15,6 @@ import adjoint_esn.utils.postprocessing as post
 from adjoint_esn.utils import dynamical_systems_sensitivity as sens
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.dynamical_systems import Lorenz63
-from adjoint_esn.utils.enums import eParam, get_eVar
 
 
 def objective_fun(u):
@@ -29,9 +28,7 @@ def dobjective_fun(u):
 
 
 def main(args):
-    model_path = Path(
-        "local_results/lorenz63/run_20240105_140530"
-    )  # rijke with reservoir
+    model_path = Path("local_results/lorenz63/run_20240105_140530")
 
     n_loops = args.n_loops
     test_loop_time_arr = args.loop_times
@@ -168,7 +165,7 @@ def main(args):
         ESN_list[e_idx] = my_ESN
 
     finite_difference_method = "central"
-    methods = ["adjoint"]
+    methods = ["numerical"]
     dJdp = {"true": {}, "esn": {}}
     for method_name in methods:
         dJdp["true"][method_name] = np.zeros(
@@ -244,7 +241,9 @@ def main(args):
                     y_init=y_init_prev,
                 )
                 y_init_prev = y_bar[-1]
-                # print(y_bar[0])
+                print(t_bar[0])
+                print(t_bar[-1])
+                print(len(y_bar))
                 for method_name in methods:
                     if method_name == "direct":
                         dJdp["true"][method_name][
@@ -273,15 +272,15 @@ def main(args):
                             my_sys,
                             t_bar,
                             y_bar,
-                            h=1e-5,
+                            h=1e-1,
                             objective_fun=objective_fun,
                             method=finite_difference_method,
                             integrator=config.simulation.integrator,
                         )
-                    # print(
-                    #     f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx,:,loop_idx,loop_time_idx]}',
-                    #     flush=True,
-                    # )
+                    print(
+                        f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx,:,loop_idx,loop_time_idx]}',
+                        flush=True,
+                    )
 
                 J["true"][p_idx, loop_idx, loop_time_idx] = objective_fun(y_bar[1:])
                 # print(f'True J = {J["true"][p_idx,loop_idx,loop_time_idx]}', flush=True)
@@ -336,10 +335,12 @@ def main(args):
                         x0=x_init_prev, N_t=N_loop, P=p_loop
                     )
                     x_init_prev = x_pred_loop[-1]
-                    # print(y_pred_loop[0])
+                    print(y_pred_loop[0])
+                    print(y_pred_loop[-1])
+                    print(len(y_pred_loop))
                     for method_name in methods:
                         if method_name == "direct":
-                            dJdp["esn"]["direct"][
+                            dJdp["esn"][method_name][
                                 esn_idx, p_idx, :, loop_idx, loop_time_idx
                             ] = my_ESN.direct_sensitivity(
                                 x_pred_loop,
@@ -348,7 +349,7 @@ def main(args):
                                 dJdy_fun=dobjective_fun,
                             )
                         elif method_name == "adjoint":
-                            dJdp["esn"]["adjoint"][
+                            dJdp["esn"][method_name][
                                 esn_idx, p_idx, :, loop_idx, loop_time_idx
                             ] = my_ESN.adjoint_sensitivity(
                                 x_pred_loop,
@@ -357,21 +358,21 @@ def main(args):
                                 dJdy_fun=dobjective_fun,
                             )
                         elif method_name == "numerical":
-                            dJdp["esn"]["finite"][
+                            dJdp["esn"][method_name][
                                 esn_idx, p_idx, :, loop_idx, loop_time_idx
                             ] = my_ESN.finite_difference_sensitivity(
                                 X=x_pred_loop,
                                 Y=y_pred_loop,
                                 P=p_loop,
                                 N=N_loop,
-                                h=1e-5,
+                                h=1e-1,
                                 method=finite_difference_method,
                                 J_fun=objective_fun,
                             )
-                        # print(
-                        # f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
-                        # flush=True,
-                        # )
+                        print(
+                            f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
+                            flush=True,
+                        )
                     J["esn"][esn_idx, p_idx, loop_idx, loop_time_idx] = objective_fun(
                         y_pred_loop[1:]
                     )
@@ -391,9 +392,9 @@ def main(args):
     print(f"Saving results to {model_path}.", flush=True)
     now = datetime.now()
     dt_string = now.strftime("%Y%m%d_%H%M%S")
-    pp.pickle_file(
-        model_path / f"sensitivity_results_{dt_string}.pickle", sensitivity_results
-    )
+    # pp.pickle_file(
+    #     model_path / f"sensitivity_results_{dt_string}.pickle", sensitivity_results
+    # )
 
 
 if __name__ == "__main__":

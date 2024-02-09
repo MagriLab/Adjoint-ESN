@@ -31,3 +31,13 @@ def nrmse(y, y_pred, axis=None, normalize_by="rms"):
         norm = np.std(y, axis=0) ** 2
 
     return np.mean(rmse(y, y_pred, axis=0) / norm, axis=axis)
+
+
+def predictability_horizon(y, y_pred, t, LT):
+    norm = np.std(y, axis=0) ** 2
+    eps = np.sqrt(((y - y_pred) ** 2) / norm)
+    tt = t / LT
+    PH = np.zeros(y.shape[1])
+    for i in range(y.shape[1]):
+        PH[i] = tt[np.where(eps[:, i] > 0.5)][0]
+    return np.min(PH)

@@ -51,6 +51,48 @@ def plot_phase_space(
     return
 
 
+def plot_lorenz63_attractor(fig, U, U_pred, length):
+    """A function to plot input data of Lorenz 63
+
+    Args:
+        U (array): 3-dim Input Time Series
+        length (scalar): length of Plot 1
+
+    Return:
+        Plot 1 : 3d Plot of Attractor
+        Plot 2 : Time Series wrt Number of Steps
+        Plot 3 : Time Series wrt Lyapunov Time
+        Plot 4 : Convection Current and Thermal Plots
+    """
+
+    # 3D PLOT OF LORENZ 63 ATTRACTOR
+    ax = fig.add_subplot(1, 2, 1, projection="3d")
+    ax.set_xlabel("x", labelpad=5)
+    ax.set_ylabel("y", labelpad=5)
+    ax.set_zlabel("z", labelpad=5)
+    ax.plot(*U[:length, :].T, lw=0.6, c="tab:blue")
+    ax.set_title("True")
+    xlims = ax.get_xlim()
+    ylims = ax.get_ylim()
+    zlims = ax.get_zlim()
+    ax.dist = 11.5
+    plt.tight_layout()
+    plt.grid()
+
+    ax = fig.add_subplot(1, 2, 2, projection="3d")
+    ax.set_xlabel("x", labelpad=5)
+    ax.set_ylabel("y", labelpad=5)
+    ax.set_zlabel("z", labelpad=5)
+    ax.plot(*U_pred[:length, :].T, lw=0.6, c="tab:orange")
+    ax.set_title("Prediction")
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
+    ax.set_zlim(zlims)
+    ax.dist = 11.5
+    plt.tight_layout()
+    plt.grid()
+
+
 def plot_statistics(
     *y,
     n_bins=100,
@@ -72,32 +114,53 @@ def plot_statistics(
 
 
 def plot_statistics_ensemble(
-    *y, y_base, xlabel=None, ylabel=None, legend=None, title=None, **line_specs
+    *y,
+    y_base,
+    orientation="var_on_x",
+    xlabel=None,
+    ylabel=None,
+    legend=None,
+    title=None,
+    **line_specs,
 ):
     # Histogram option
     n_bins = 100
 
     density_base = stats.gaussian_kde(y_base)
     _, x = np.histogram(y_base, n_bins, density=True)
-    plt.plot(x, density_base(x), **get_line_specs(line_specs, 0))
+    if orientation == "var_on_x":
+        plt.plot(x, density_base(x), **get_line_specs(line_specs, 0))
+    elif orientation == "var_on_y":
+        plt.plot(density_base(x), x, **get_line_specs(line_specs, 0))
 
     density_arr = np.zeros((len(y), n_bins + 1))
     for i, yy in enumerate(y):
         density = stats.gaussian_kde(yy)
         density_arr[i] = density(x)[None, :]
     density_mean = np.mean(density_arr, axis=0)
-    plt.plot(x, density_mean, **get_line_specs(line_specs, 1))
-
     density_std = np.std(density_arr, axis=0)
-    plt.fill_between(
-        x,
-        density_mean - density_std,
-        density_mean + density_std,
-        alpha=0.2,
-        color=line_specs["color"][1],
-        antialiased=True,
-        zorder=2,
-    )
+    if orientation == "var_on_x":
+        plt.plot(x, density_mean, **get_line_specs(line_specs, 1))
+        plt.fill_between(
+            x,
+            density_mean - density_std,
+            density_mean + density_std,
+            alpha=0.2,
+            color=line_specs["color"][1],
+            antialiased=True,
+            zorder=2,
+        )
+    elif orientation == "var_on_y":
+        plt.plot(density_mean, x, **get_line_specs(line_specs, 1))
+        plt.fill_betweenx(
+            x,
+            density_mean - density_std,
+            density_mean + density_std,
+            alpha=0.2,
+            color=line_specs["color"][1],
+            antialiased=True,
+            zorder=2,
+        )
     plt.grid()
     set_labels(xlabel, ylabel, legend, title)
     return

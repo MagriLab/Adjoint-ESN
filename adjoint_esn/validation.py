@@ -235,6 +235,7 @@ def loop(
     # average over realisations
     error = np.mean(realisation_error)
     print("Run", run_idx, "error:", error)
+    print("Error:", error)
     print("\n")
     return error
 
