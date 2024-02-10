@@ -39,5 +39,10 @@ def predictability_horizon(y, y_pred, t, LT):
     tt = t / LT
     PH = np.zeros(y.shape[1])
     for i in range(y.shape[1]):
-        PH[i] = tt[np.where(eps[:, i] > 0.5)][0]
+        PH_list = np.where(eps[:, i] > 0.5)
+        if len(PH_list == 0):
+            print("Predictability horizon longer than given time series.")
+            PH[i] = tt[-1]
+        else:
+            PH[i] = tt[PH_list][0]
     return np.min(PH)
