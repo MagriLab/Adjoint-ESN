@@ -13,6 +13,7 @@ import numpy as np
 
 import adjoint_esn.utils.postprocessing as post
 from adjoint_esn.utils import dynamical_systems_sensitivity as sens
+from adjoint_esn.utils import lyapunov as lyap
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.dynamical_systems import Lorenz63
 
@@ -27,11 +28,35 @@ def dobjective_fun(u):
     return dobj
 
 
+def Lyapunov_Time(sys, params, transient_time, sim_dt, integrator):
+    sim_time = 200 + transient_time
+    my_sys, y_sim, t_sim = pp.load_data_dyn_sys(
+        sys, params, sim_time, sim_dt, y_init=[-2.4, -3.7, 14.98], integrator=integrator
+    )
+    y, t = pp.discard_transient(y_sim, t_sim, transient_time)
+    LEs, _, _, _ = lyap.calculate_LEs(
+        sys=my_sys,
+        sys_type="continuous",
+        X=y,
+        t=t,
+        transient_time=transient_time,
+        dt=sim_dt,
+        target_dim=None,
+        norm_step=1,
+    )
+    LEs_target = LEs[-1]
+    LT = 1 / LEs_target[0]
+    if LT <= 0:
+        return 1
+    else:
+        return LT
+
+
 def main(args):
-    model_path = Path("local_results/lorenz63/run_20240105_140530")
+    model_path = Path(f"local_results/lorenz63/run_{args.run_name}")
 
     n_loops = args.n_loops
-    test_loop_time_arr = args.loop_times
+    test_loop_time_arr = np.array(args.loop_times)
     n_ensemble = args.n_ensemble_esn
 
     if len(args.beta) == 3:
@@ -165,7 +190,7 @@ def main(args):
         ESN_list[e_idx] = my_ESN
 
     finite_difference_method = "central"
-    methods = ["numerical"]
+    methods = ["adjoint"]
     dJdp = {"true": {}, "esn": {}}
     for method_name in methods:
         dJdp["true"][method_name] = np.zeros(
@@ -188,8 +213,6 @@ def main(args):
         test_washout_time = config.model.washout_time
     else:
         test_washout_time = 0
-    test_sim_time = max(args.loop_times) + test_transient_time + test_washout_time
-    test_loop_times = [max(args.loop_times)]
 
     for p_idx, p in enumerate(p_list):
         p_sim = {"beta": p[eParam.beta], "rho": p[eParam.rho], "sigma": p[eParam.sigma]}
@@ -198,6 +221,28 @@ def main(args):
             f'beta = {p_sim["beta"]}, rho = {p_sim["rho"]}, sigma = {p_sim["sigma"]},'
         )
         print("Regime:", regime_str)
+
+        # get lyapunov time
+        if args.lyapunov_time:
+            # use lyapunov time to scale the loop times
+            LT = Lyapunov_Time(
+                Lorenz63,
+                p_sim,
+                config.simulation.transient_time,
+                config.simulation.sim_dt,
+                config.simulation.integrator,
+            )
+            new_test_loop_time_arr = LT * test_loop_time_arr
+            # round it to the network dt
+            div = new_test_loop_time_arr / config.model.network_dt
+            new_test_loop_time_arr = config.model.network_dt * np.round(div)
+        else:
+            new_test_loop_time_arr = test_loop_time_arr
+
+        test_sim_time = (
+            max(new_test_loop_time_arr) + test_transient_time + test_washout_time
+        )
+        test_loop_times = [max(new_test_loop_time_arr)]
 
         # set up the initial conditions
         y0 = np.zeros((1, DATA["train"]["u_washout"][0].shape[1]))
@@ -225,8 +270,9 @@ def main(args):
             input_vars=config.model.input_vars,
             param_vars=config.model.param_vars,
         )
+
         print("Running true.", flush=True)
-        for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
+        for loop_time_idx, test_loop_time in enumerate(new_test_loop_time_arr):
             print("Loop time:", test_loop_time)
             y_init_prev = data["loop_0"]["u"][0]
             for loop_idx in range(n_loops):
@@ -241,9 +287,6 @@ def main(args):
                     y_init=y_init_prev,
                 )
                 y_init_prev = y_bar[-1]
-                print(t_bar[0])
-                print(t_bar[-1])
-                print(len(y_bar))
                 for method_name in methods:
                     if method_name == "direct":
                         dJdp["true"][method_name][
@@ -272,15 +315,15 @@ def main(args):
                             my_sys,
                             t_bar,
                             y_bar,
-                            h=1e-1,
+                            h=1e-5,
                             objective_fun=objective_fun,
                             method=finite_difference_method,
                             integrator=config.simulation.integrator,
                         )
-                    print(
-                        f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx,:,loop_idx,loop_time_idx]}',
-                        flush=True,
-                    )
+                    # print(
+                    #     f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx,:,loop_idx,loop_time_idx]}',
+                    #     flush=True,
+                    # )
 
                 J["true"][p_idx, loop_idx, loop_time_idx] = objective_fun(y_bar[1:])
                 # print(f'True J = {J["true"][p_idx,loop_idx,loop_time_idx]}', flush=True)
@@ -322,9 +365,9 @@ def main(args):
                 X_pred = X_pred[N_transient_test:, :]
                 Y_pred = Y_pred[N_transient_test:, :]
 
-            x_init_prev = X_pred[0]
-            for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
+            for loop_time_idx, test_loop_time in enumerate(new_test_loop_time_arr):
                 print("Loop time:", test_loop_time, flush=True)
+                x_init_prev = X_pred[0]
                 N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
                 p_loop = data["loop_0"]["p"][0:N_loop]
                 for loop_idx in range(n_loops):
@@ -335,9 +378,6 @@ def main(args):
                         x0=x_init_prev, N_t=N_loop, P=p_loop
                     )
                     x_init_prev = x_pred_loop[-1]
-                    print(y_pred_loop[0])
-                    print(y_pred_loop[-1])
-                    print(len(y_pred_loop))
                     for method_name in methods:
                         if method_name == "direct":
                             dJdp["esn"][method_name][
@@ -365,14 +405,14 @@ def main(args):
                                 Y=y_pred_loop,
                                 P=p_loop,
                                 N=N_loop,
-                                h=1e-1,
+                                h=1e-5,
                                 method=finite_difference_method,
                                 J_fun=objective_fun,
                             )
-                        print(
-                            f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
-                            flush=True,
-                        )
+                        # print(
+                        #     f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
+                        #     flush=True,
+                        # )
                     J["esn"][esn_idx, p_idx, loop_idx, loop_time_idx] = objective_fun(
                         y_pred_loop[1:]
                     )
@@ -392,13 +432,14 @@ def main(args):
     print(f"Saving results to {model_path}.", flush=True)
     now = datetime.now()
     dt_string = now.strftime("%Y%m%d_%H%M%S")
-    # pp.pickle_file(
-    #     model_path / f"sensitivity_results_{dt_string}.pickle", sensitivity_results
-    # )
+    pp.pickle_file(
+        model_path / f"sensitivity_results_{dt_string}.pickle", sensitivity_results
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str)
     parser.add_argument("--beta", nargs="+", type=float)
     parser.add_argument("--rho", nargs="+", type=float)
     parser.add_argument("--sigma", nargs="+", type=float)
@@ -407,5 +448,6 @@ if __name__ == "__main__":
     parser.add_argument("--n_loops", default=1000, type=int)
     parser.add_argument("--n_ensemble_esn", default=5, type=int)
     parser.add_argument("--loop_times", nargs="+", type=float)
+    parser.add_argument("--lyapunov_time", default=False, action="store_true")
     parsed_args = parser.parse_args()
     main(parsed_args)
