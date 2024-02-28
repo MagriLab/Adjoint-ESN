@@ -799,10 +799,10 @@ class ESN:
             if hasattr(self, attr):
                 delattr(self, attr)
 
-    def acoustic_energy(Y, N_g):
+    def acoustic_energy(self, Y, N_g):
         return 1 / 4 * np.mean(np.sum(Y[0 : 2 * N_g] ** 2, axis=1))
 
-    def dacoustic_energy(Y, N_g):
+    def dacoustic_energy(self, Y, N_g):
         yy = np.zeros_like(Y)
         yy[: 2 * N_g] = Y[: 2 * N_g]
         return 1 / 2 * yy
@@ -849,7 +849,7 @@ class ESN:
             # integrate direct variables forwards in time
             q[i] = dfdp + np.dot(jac, q[i - 1])
 
-            # get galerkin amplitudes
+            # get objective with respect to output states
             dJdy = dJdy_fun(Y[i])
 
             # gradient of objective with respect to reservoir states

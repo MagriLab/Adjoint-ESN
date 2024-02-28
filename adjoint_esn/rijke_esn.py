@@ -46,7 +46,6 @@ class RijkeESN(ESN):
         input_weights_mode="sparse_grouped_rijke_dense",
         reservoir_weights_mode="erdos_renyi2",
     ):
-
         self.verbose = verbose
         if r2_mode == True:
             print("r2 mode not implemented, setting to False")
@@ -402,14 +401,15 @@ class RijkeESN(ESN):
             "_dfdx_x_const",
             "_dfdx_u",
             "_dfdp_const",
-            "_dydf" "_dfdx_tau_const",
+            "_dydf",
+            "_dfdx_tau_const",
             "_dfdu_f_tau_const",
         ]
         for attr in attr_list:
             if hasattr(self, attr):
                 delattr(self, attr)
 
-    def direct_sensitivity(self, X, Y, N, X_past, method="central"):
+    def direct_sensitivity(self, X, Y, N, X_past, method="central", dJdy_fun=None):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -427,6 +427,10 @@ class RijkeESN(ESN):
         """
         # reset grad attributes
         self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
 
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
@@ -493,19 +497,19 @@ class RijkeESN(ESN):
                     + np.dot(jac_tau, q[i - self.N_tau - 1])
                 )
 
-            # get galerkin amplitudes
-            y_galerkin = Y[i, : 2 * self.N_g]
+            # get objective with respect to output states
+            dJdy = dJdy_fun(Y[i])
 
             # gradient of objective with respect to reservoir states
-            dydf = self.dydf(self.N_g, X[i, :])
-            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf)
+            dydf = self.dydf(X[i, :])
+            dJdf = (1 / N) * np.dot(dJdy, dydf)
 
             # sensitivity to parameters
             dJdp += np.dot(dJdf, q[i])
 
         return dJdp
 
-    def adjoint_sensitivity(self, X, Y, N, X_past, method="central"):
+    def adjoint_sensitivity(self, X, Y, N, X_past, method="central", dJdy_fun=None):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using ADJOINT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -524,6 +528,10 @@ class RijkeESN(ESN):
         # reset grad attributes
         self.reset_grad_attrs()
 
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
 
@@ -534,13 +542,13 @@ class RijkeESN(ESN):
         XX = np.vstack((X_past[-self.N_tau - 1 : -1, :], X))
 
         # integrate backwards
-        # predict galerkin amplitudes
-        y_galerkin = Y[N, : 2 * self.N_g]
+        # objective function at the terminal state
+        dJdy = dJdy_fun(Y[N])
 
         # terminal condition,
         # i.e. gradient of the objective at the terminal state
-        dydf = self.dydf(self.N_g, X[N, :])
-        v[N] = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+        dydf = self.dydf(X[N, :])
+        v[N] = (1 / N) * np.dot(dJdy, dydf).T
 
         for i in np.arange(N, 0, -1):
             dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
@@ -587,19 +595,19 @@ class RijkeESN(ESN):
             # sensitivity to parameters
             dJdp += np.dot(v[i], dfdp)
 
-            # get galerkin amplitudes
-            y_galerkin = Y[i - 1, : 2 * self.N_g]
+            # get the derivative of the objective with respect to the outputs
+            dJdy = dJdy_fun(Y[i - 1])
 
             # gradient of objective with respect to reservoir states
-            dydf = self.dydf(self.N_g, X[i - 1, :])
-            dJdf = (1 / N) * 1 / 2 * np.dot(y_galerkin, dydf).T
+            dydf = self.dydf(X[i - 1, :])
+            dJdf = (1 / N) * np.dot(dJdy, dydf).T
 
             # jacobian of the reservoir dynamics
             jac = self.jac(dtanh, X[i - 1, :])
 
             if i <= N - self.N_tau:
                 # need tau "advanced" velocity (delayed becomes advanced in adjoint)
-                eta_tau_future = y_galerkin[0 : self.N_g]
+                eta_tau_future = Y[i - 1, 0 : self.N_g]
                 u_f_tau_future = Rijke.toVelocity(
                     N_g=self.N_g, eta=eta_tau_future, x=np.array([self.x_f])
                 )
@@ -617,7 +625,7 @@ class RijkeESN(ESN):
         return dJdp
 
     def finite_difference_sensitivity(
-        self, X, Y, X_tau, P, N, h=1e-5, method="central"
+        self, X, Y, X_tau, P, N, h=1e-5, method="central", J_fun=None
     ):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using FINITE DIFFERENCES
@@ -640,8 +648,11 @@ class RijkeESN(ESN):
         # initialize sensitivity
         dJdp = np.zeros((self.N_param_dim + 1))
 
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy, N_g=self.N_g)
+
         # compute the energy of the base
-        J = 1 / 4 * np.mean(np.sum(Y[1:, 0 : 2 * self.N_g] ** 2, axis=1))
+        J = J_fun(Y[1:])
 
         # define which finite difference method to use
         finite_difference = partial(finite_differences, method=method)
@@ -655,10 +666,8 @@ class RijkeESN(ESN):
             P_right[:, i] += h
             _, Y_left = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_left)
             _, Y_right = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_right)
-            J_left = 1 / 4 * np.mean(np.sum(Y_left[1:, 0 : 2 * self.N_g] ** 2, axis=1))
-            J_right = (
-                1 / 4 * np.mean(np.sum(Y_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
-            )
+            J_left = J_fun(Y_left[1:])
+            J_right = J_fun(Y_right[1:])
             dJdp[i] = finite_difference(J, J_right, J_left, h)
 
         # tau sensitivity
@@ -666,15 +675,11 @@ class RijkeESN(ESN):
         h_tau = self.dt
         self.tau = orig_tau - h_tau
         _, Y_tau_left = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P)
-        J_tau_left = (
-            1 / 4 * np.mean(np.sum(Y_tau_left[1:, 0 : 2 * self.N_g] ** 2, axis=1))
-        )
+        J_tau_left = J_fun(Y_tau_left[1:])
 
         self.tau = orig_tau + h_tau
         _, Y_tau_right = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P)
-        J_tau_right = (
-            1 / 4 * np.mean(np.sum(Y_tau_right[1:, 0 : 2 * self.N_g] ** 2, axis=1))
-        )
+        J_tau_right = J_fun(Y_tau_right[1:])
         dJdp[-1] = finite_difference(J, J_tau_right, J_tau_left, h_tau)
 
         # set tau back to the original value
