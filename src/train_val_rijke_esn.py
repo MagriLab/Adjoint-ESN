@@ -236,6 +236,7 @@ def main(_):
             u_f_order=config.model.u_f_order,
             noise_level=config.simulation.noise_level,
             random_seed=config.random_seed + p_idx,
+            tau=p_sim["tau"],
         )
 
         for loop_name in loop_names:
