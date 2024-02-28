@@ -64,7 +64,10 @@ def main(args):
 
     transient_time = config.simulation.transient_time
 
-    noise_level = config.simulation.noise_level
+    if args.train_noise_level >= 0.0:
+        noise_level = args.train_noise_level
+    else:
+        noise_level = config.simulation.noise_level
 
     random_seed = config.random_seed
 
@@ -136,6 +139,7 @@ def main(args):
             u_f_order=u_f_order,
             noise_level=noise_level,
             random_seed=random_seed,
+            tau=p_sim["tau"]
         )
 
         for loop_name in loop_names:
@@ -241,6 +245,7 @@ def main(args):
             param_vars=param_vars,
             N_g=N_g,
             u_f_order=u_f_order,
+            tau=p_sim["tau"]
         )
 
         loop_name = list(data.keys())[0]
@@ -431,5 +436,6 @@ if __name__ == "__main__":
     parser.add_argument("--tau", nargs="+", type=float)
     parser.add_argument("--same_washout", default=False, action="store_true")
     parser.add_argument("--eta_1_init", default=1.0, type=float)
+    parser.add_argument("--train_noise_level",type=float,default=-1.0)
     parsed_args = parser.parse_args()
     main(parsed_args)
