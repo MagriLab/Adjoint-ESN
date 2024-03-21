@@ -24,7 +24,7 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 
 def main(args):
-    model_path = Path("local_results/rijke/run_20240307_175258")  # rijke with reservoir
+    model_path = Path(f"local_results/rijke/run_{args.run_name}")
     data_dir = Path("data")
 
     n_loops = args.n_loops
@@ -168,9 +168,12 @@ def main(args):
     ESN_list = [None] * n_ensemble
     for e_idx in range(n_ensemble):
         # fix the seeds
-        input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
-        reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
-
+        if n_ensemble == 1:
+            input_seeds = [20,21,22]
+            reservoir_seeds = [23,24]
+        else:
+            input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
+            reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
         # expand the ESN dict with the fixed seeds
         ESN_dict["input_seeds"] = input_seeds
         ESN_dict["reservoir_seeds"] = reservoir_seeds
@@ -468,6 +471,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str)
     parser.add_argument("--beta", nargs="+", type=float, default=[7.2])
     parser.add_argument("--tau", nargs="+", type=float, default=[0.2])
     parser.add_argument("--same_washout", default=False, action="store_true")
