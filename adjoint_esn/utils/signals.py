@@ -89,26 +89,68 @@ def amplitude_spectrum(x, dt):
 
     """
     # Get the signal length and number of signals
-    signal_length = len(x)
+    N = len(x)
     # Determine the fourier frequencies
-    omega = 1 / dt * 2 * np.pi * np.fft.fftfreq(signal_length)
+    omega = 1 / dt * 2 * np.pi * np.fft.fftfreq(N)
     # Take the fourier transform of the signal
     X_fft = np.fft.fft(x)
 
     # Calculate the one-sided spectrum
-    if signal_length % 2 == 1:  # signal length odd
-        # then we only have 0 frequency at index 0
-        asd_zero = np.abs(X_fft[0] / signal_length)
-        asd_nonzero = 2 * np.abs(
-            X_fft[1 : int((signal_length - 1) / 2) + 1] / signal_length
-        )
-        asd = np.hstack([asd_zero, asd_nonzero])
-        omega = omega[0 : int((signal_length - 1) / 2) + 1]
+    if N % 2 == 1:  # signal length odd
+        # then we only have 0 frequency at index 0, and nyquist frequency (pi, -pi) occurs twice
+        X_fft_1 = X_fft[0 : int((N - 1) / 2) + 1]
+        A = (1 / N) * np.abs(X_fft_1)
+        A[1:] = 2 * A[1:]
+        omega = omega[0 : int((N - 1) / 2) + 1]
 
-    elif signal_length % 2 == 0:  # signal length even
-        # we have zero frequency at index 0, and pi/-pi frequency at index signal_length/2
-        asd_zero = np.abs(X_fft[0] / signal_length)
-        asd_nonzero = 2 * np.abs(X_fft[1 : int(signal_length / 2)] / signal_length)
-        asd = np.hstack([asd_zero, asd_nonzero])
-        omega = omega[0 : int(signal_length / 2)]
-    return omega, asd
+    elif N % 2 == 0:  # signal length even
+        # we have zero frequency at index 0, and nyquist frequency -pi at index signal_length/2
+        X_fft_1 = X_fft[0 : int(N / 2) + 1]
+        A = (1 / N) * np.abs(X_fft_1)
+        A[1:-1] = (
+            2 * A[1:-1]
+        )  # zero frequency (DC) and the nyquist frequency do not occur twice
+        omega = omega[0 : int(N / 2) + 1]
+        omega[-1] = -omega[-1]  # change from -pi to pi
+    return omega, A
+
+
+def power_spectral_density(x, dt):
+    """
+    Return the power spectral density of a signal.
+
+    Args:
+    x: signal
+    dt: sampling time
+
+    Returns:
+    omega: fourier frequencies
+    psd: one-sided power spectral density
+
+    """
+    # Get the signal length and number of signals
+    N = len(x)  # signal length
+    fs = 1 / dt  # sampling frequency
+    # Determine the fourier frequencies
+    omega = fs * 2 * np.pi * np.fft.fftfreq(N)
+    # Take the fourier transform of the signal
+    X_fft = np.fft.fft(x)
+
+    # Calculate the one-sided spectrum
+    if N % 2 == 1:  # signal length odd
+        # then we only have 0 frequency at index 0, and nyquist frequency (pi, -pi) occurs twice
+        X_fft_1 = X_fft[0 : int((N - 1) / 2) + 1]
+        psd = (1 / (fs * N)) * np.abs(X_fft_1) ** 2
+        psd[1:] = 2 * psd[1:]
+        omega = omega[0 : int((N - 1) / 2) + 1]
+
+    elif N % 2 == 0:  # signal length even
+        # we have zero frequency at index 0, and nyquist frequency -pi at index signal_length/2
+        X_fft_1 = X_fft[0 : int(N / 2) + 1]
+        psd = (1 / (fs * N)) * np.abs(X_fft_1) ** 2
+        psd[1:-1] = (
+            2 * psd[1:-1]
+        )  # zero frequency (DC) and the nyquist frequency do not occur twice
+        omega = omega[0 : int(N / 2) + 1]
+        omega[-1] = -omega[-1]  # change from -pi to pi
+    return omega, psd

@@ -404,12 +404,15 @@ class RijkeESN(ESN):
             "_dydf",
             "_dfdx_tau_const",
             "_dfdu_f_tau_const",
+            "_dfdx_const",
         ]
         for attr in attr_list:
             if hasattr(self, attr):
                 delattr(self, attr)
 
-    def direct_sensitivity(self, X, Y, N, X_past, method="central", dJdy_fun=None):
+    def direct_sensitivity(
+        self, X, Y, N, X_past, method="central", dJdy_fun=None, fast_jac=False
+    ):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -423,7 +426,7 @@ class RijkeESN(ESN):
                 Galerkin amplitudes
 
         Returns:
-            dJdp: adjoint sensitivity to parameters
+            dJdp: direct sensitivity to parameters
         """
         # reset grad attributes
         self.reset_grad_attrs()
@@ -431,6 +434,12 @@ class RijkeESN(ESN):
         # if the objective is not defined the default is the acoustic energy
         if dJdy_fun is None:
             dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
 
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
@@ -485,7 +494,8 @@ class RijkeESN(ESN):
             dfdp = np.hstack((dfdbeta, dfdtau))
 
             # integrate direct variables forwards in time
-            jac = self.jac(dtanh, X[i - 1, :])
+            jac = jac_fun(dtanh, X[i - 1, :])
+
             if i <= self.N_tau:
                 q[i] = dfdp + np.dot(jac, q[i - 1])
             # depends on the past
@@ -509,7 +519,9 @@ class RijkeESN(ESN):
 
         return dJdp
 
-    def adjoint_sensitivity(self, X, Y, N, X_past, method="central", dJdy_fun=None):
+    def adjoint_sensitivity(
+        self, X, Y, N, X_past, method="central", dJdy_fun=None, fast_jac=False
+    ):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using ADJOINT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -531,6 +543,12 @@ class RijkeESN(ESN):
         # if the objective is not defined the default is the acoustic energy
         if dJdy_fun is None:
             dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
 
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
@@ -603,7 +621,7 @@ class RijkeESN(ESN):
             dJdf = (1 / N) * np.dot(dJdy, dydf).T
 
             # jacobian of the reservoir dynamics
-            jac = self.jac(dtanh, X[i - 1, :])
+            jac = jac_fun(dtanh, X[i - 1, :])
 
             if i <= N - self.N_tau:
                 # need tau "advanced" velocity (delayed becomes advanced in adjoint)

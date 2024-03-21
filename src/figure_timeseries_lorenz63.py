@@ -18,11 +18,11 @@ from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.dynamical_systems import Lorenz63
 
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
+rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
 rc("text", usetex=True)
 save_fig = True
 same_washout = False
-model_path = Path("local_results/lorenz63/run_20240105_140530")
+model_path = Path("local_results/lorenz63/run_20240208_121804")
 
 fig_name = "1"
 
@@ -35,28 +35,26 @@ if fig_name == "1":
     test_param_list[0, eParam.rho] = 28.0
     test_param_list[0, eParam.sigma] = 10.0
 
-    test_param_list[1, eParam.beta] = 1.75
+    test_param_list[1, eParam.beta] = 2.0
     test_param_list[1, eParam.rho] = 52.0
     test_param_list[1, eParam.sigma] = 13.0
-    LT = [1.1, 0.84]
+    LT = [1.1, 0.8]
+    titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)"]
 
-    titles = ["(a)", "(b)", "(c)", "(d)"]
-
-n_ensemble = 10
+n_ensemble = 1
 short_loop_lt = 20
-long_loop_lt = 1000
+long_loop_lt = 5000
 test_loop_names = ["short", "long"]
-# y_init = [7.432487609628195, 10.02071718705213, 29.62297428638419]
-y_init = [1.0, 1.0, 1.0]
+y_init = [-2.4, -3.7, 14.98]
 
-figure_size = (10, 4)
+figure_size = (15, 5)
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
 true_color = "silver"
 pred_color = "tab:red"
-true_lw = 6.0
-pred_lw = 2.0
+true_lw = 8.0
+pred_lw = 2.5
 true_ls = "-"
 pred_ls = "--"
 config = post.load_config(model_path)
@@ -270,7 +268,7 @@ for p_idx, p in enumerate(test_param_list):
 
     best_idx = np.argmin(pred_short_error)
     print("Best idx: ", best_idx)
-    best_idx = 1
+    best_idx = 0
 
     # SHORT-TERM AND TIME-ACCURATE PREDICTION
     # Plot short term prediction timeseries of the best of ensemble
@@ -315,16 +313,16 @@ for p_idx, p in enumerate(test_param_list):
         ax2.yaxis.set_major_locator(MultipleLocator(20))
         ax2.set_yticklabels([])
 
-        if i == 0:
+        if i == 0 and p_idx == 0:
             ax2.legend(
                 ["True", "ESN"],
-                ncol=2,
+                ncol=1,
                 columnspacing=0.6,
-                loc="lower right",
+                loc="center left",
                 handlelength=1.5,
                 handletextpad=0.25,
-                bbox_to_anchor=(1.05, -0.08),
-                frameon=False,
+                # bbox_to_anchor=(1.05, -0.08),
+                # frameon=False,
             )
         if i < len(plt_idx) - 1 or p_idx < len(test_param_list) - 1:
             ax2.set_xticklabels([])
@@ -336,10 +334,6 @@ for p_idx, p in enumerate(test_param_list):
         # ax2.annotate(titles[2*(p_idx + i)+1], (-0.1, 1.1), annotation_clip=False)
     # subfigs[0].suptitle(title, x=0.0, y=1.025)
 if save_fig:
-    fig.savefig(
-        f"paper_chaotic/graphics/figure_{fig_name}_diff_init.png", bbox_inches="tight"
-    )
-    fig.savefig(
-        f"paper_chaotic/graphics/figure_{fig_name}_diff_init.pdf", bbox_inches="tight"
-    )
+    fig.savefig(f"paper_chaotic/graphics/figure_{fig_name}.png", bbox_inches="tight")
+    fig.savefig(f"paper_chaotic/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()

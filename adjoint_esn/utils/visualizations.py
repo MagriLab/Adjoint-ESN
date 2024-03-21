@@ -133,34 +133,65 @@ def plot_statistics_ensemble(
     elif orientation == "var_on_y":
         plt.plot(density_base(x), x, **get_line_specs(line_specs, 0))
 
-    density_arr = np.zeros((len(y), n_bins + 1))
-    for i, yy in enumerate(y):
-        density = stats.gaussian_kde(yy)
-        density_arr[i] = density(x)[None, :]
-    density_mean = np.mean(density_arr, axis=0)
-    density_std = np.std(density_arr, axis=0)
-    if orientation == "var_on_x":
-        plt.plot(x, density_mean, **get_line_specs(line_specs, 1))
-        plt.fill_between(
-            x,
-            density_mean - density_std,
-            density_mean + density_std,
-            alpha=0.2,
-            color=line_specs["color"][1],
-            antialiased=True,
-            zorder=2,
-        )
-    elif orientation == "var_on_y":
-        plt.plot(density_mean, x, **get_line_specs(line_specs, 1))
-        plt.fill_betweenx(
-            x,
-            density_mean - density_std,
-            density_mean + density_std,
-            alpha=0.2,
-            color=line_specs["color"][1],
-            antialiased=True,
-            zorder=2,
-        )
+    if isinstance(y[0], list):
+        for i in range(len(y)):
+            density_arr = np.zeros((len(y[i]), n_bins + 1))
+            for j, yy in enumerate(y[i]):
+                density = stats.gaussian_kde(yy)
+                density_arr[j] = density(x)[None, :]
+            density_mean = np.mean(density_arr, axis=0)
+            density_std = np.std(density_arr, axis=0)
+            if orientation == "var_on_x":
+                plt.plot(x, density_mean, **get_line_specs(line_specs, 1 + i))
+                plt.fill_between(
+                    x,
+                    density_mean - density_std,
+                    density_mean + density_std,
+                    alpha=0.2,
+                    color=line_specs["color"][1 + i],
+                    antialiased=True,
+                    zorder=2,
+                )
+            elif orientation == "var_on_y":
+                plt.plot(density_mean, x, **get_line_specs(line_specs, 1 + i))
+                plt.fill_betweenx(
+                    x,
+                    density_mean - density_std,
+                    density_mean + density_std,
+                    alpha=0.2,
+                    color=line_specs["color"][1 + i],
+                    antialiased=True,
+                    zorder=2,
+                )
+    else:
+        density_arr = np.zeros((len(y), n_bins + 1))
+        for i, yy in enumerate(y):
+            density = stats.gaussian_kde(yy)
+            density_arr[i] = density(x)[None, :]
+        density_mean = np.mean(density_arr, axis=0)
+        density_std = np.std(density_arr, axis=0)
+        if orientation == "var_on_x":
+            plt.plot(x, density_mean, **get_line_specs(line_specs, 1))
+            plt.fill_between(
+                x,
+                density_mean - density_std,
+                density_mean + density_std,
+                alpha=0.2,
+                color=line_specs["color"][1],
+                antialiased=True,
+                zorder=2,
+            )
+        elif orientation == "var_on_y":
+            plt.plot(density_mean, x, **get_line_specs(line_specs, 1))
+            plt.fill_betweenx(
+                x,
+                density_mean - density_std,
+                density_mean + density_std,
+                alpha=0.2,
+                color=line_specs["color"][1],
+                antialiased=True,
+                zorder=2,
+            )
     plt.grid()
     set_labels(xlabel, ylabel, legend, title)
     return
@@ -221,8 +252,11 @@ def plot_asd(
     **line_specs,
 ):
     plt.plot(omega_y_base, asd_y_base, **get_line_specs(line_specs, 0))
-
-    plt.plot(omega_y, asd_y, **get_line_specs(line_specs, 1))
+    if isinstance(asd_y, list):
+        for i, (asd_yy, omega_yy) in enumerate(zip(asd_y, omega_y)):
+            plt.plot(omega_yy, asd_yy, **get_line_specs(line_specs, 1 + i))
+    else:
+        plt.plot(omega_y, asd_y, **get_line_specs(line_specs, 1))
 
     max_freq = omega_y_base[np.argmax(asd_y_base)]
     min_xlim = max(0, max_freq - range / 2)

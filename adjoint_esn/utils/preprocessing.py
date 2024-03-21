@@ -4,6 +4,7 @@ from itertools import product
 
 import h5py
 import numpy as np
+from scipy import signal
 
 import adjoint_esn.utils.solve_ode as solve_ode
 from adjoint_esn.rijke_galerkin.solver import Rijke
@@ -94,7 +95,7 @@ def load_data(
         if y_init is not None:
             run_sim = True
 
-        if not run_sim:
+        if run_sim == False:
             # reduce the simulation time steps if necessary
             sim_time_steps = get_steps(sim_time, loaded_sim_dt)
             y = data_dict["y"][: sim_time_steps + 1]
@@ -207,12 +208,15 @@ def create_input_output(u, y, t, N_washout, N_loop):
     return u_washout, u_loop, y_loop, t_loop
 
 
-def generate_noise(y, noise_level, random_seed):
-    y_std = np.std(y, axis=0)
+def generate_noise(y, noise_level, random_seed, noise_std=0.0):
     rnd = np.random.RandomState(seed=random_seed)
-    noise = rnd.normal(
-        loc=np.zeros(y.shape[1]), scale=noise_level / 100 * y_std, size=y.shape
-    )
+    if noise_std <= 0:
+        y_std = np.std(y, axis=0)
+        noise = rnd.normal(
+            loc=np.zeros(y.shape[1]), scale=noise_level / 100 * y_std, size=y.shape
+        )
+    else:
+        noise = rnd.normal(loc=np.zeros(y.shape[1]), scale=noise_std, size=y.shape)
     return noise
 
 
@@ -234,13 +238,23 @@ def create_dataset(
     tau=0,
     loop_names=None,
     start_idxs=None,
+    noise_std=0,
+    filter=None,
+    f0=5,  # omega = 10 * pi, which is 10 harmonics more or less
 ):
     y, t = upsample(y, t, network_dt)
     y, t = discard_transient(y, t, transient_time)
 
     # add noise
-    if noise_level > 0:
-        y = y + generate_noise(y, noise_level, random_seed)
+    if noise_level > 0 or noise_std > 0:
+        y = y + generate_noise(y, noise_level, random_seed, noise_std)
+
+    # filter noise
+    if filter == "low":  # apply low-pass filter to the data
+        for y_idx in range(y.shape[1]):
+            # 3rd order butterworth low-pass filter
+            b, a = signal.butter(3, f0, fs=1 / network_dt)
+            y[:, y_idx] = signal.filtfilt(b, a, y[:, y_idx])
 
     # choose input and output states
     N_tau = int(np.round(tau / network_dt))
@@ -326,13 +340,23 @@ def create_dataset_dyn_sys(
     random_seed=0,
     loop_names=None,
     start_idxs=None,
+    noise_std=0,
+    filter=None,
+    f0=5,
 ):
     y, t = upsample(y, t, network_dt)
     y, t = discard_transient(y, t, transient_time)
 
     # add noise
-    if noise_level > 0:
-        y = y + generate_noise(y, noise_level, random_seed)
+    if noise_level > 0 or noise_std > 0:
+        y = y + generate_noise(y, noise_level, random_seed, noise_std)
+
+    # filter noise
+    if filter == "low":  # apply low-pass filter to the data
+        for y_idx in range(y.shape[1]):
+            # 3rd order butterworth low-pass filter
+            b, a = signal.butter(3, f0, fs=1 / network_dt)
+            y[:, y_idx] = signal.filtfilt(b, a, y[:, y_idx])
 
     # separate into washout and loops
     N_washout, *N_loops = [

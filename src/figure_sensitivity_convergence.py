@@ -20,7 +20,7 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 same_washout = False
 model_path = Path("local_results/lorenz63/run_20240208_121804")
 
@@ -91,14 +91,22 @@ titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
 # run_20240208_121804
 # sens_results_name = "20240208_201311" #beta
 # sens_results_name = "20240208_193744" #rho
-sens_results_name = "20240208_201509"  # sigma
+# sens_results_name = "20240208_201509"  # sigma
 # sens_results_list = [["20240208_185946"],
 #                      ["20240208_191537"],
 #                      ["20240208_200922"],
 #                      ]
 direct_estimate = [-1.68, 1.01, 0.16]
 
-sens_param_name = "sigma"
+# sens_results_name = "20240212_050609" #beta
+# sens_results_name = "20240212_053848" #rho
+# sens_results_name = "20240212_071830" # sigma
+
+# sens_results_name = "20240214_090024" #beta
+# sens_results_name = "20240213_224526" #rho
+# sens_results_name = "20240214_054527"  # sigma
+sens_param_name = "beta"
+sens_results_name = "20240218_152612"
 esn_idx = 1
 figure_size = (15, 3)
 # true_color = ["dimgrey","silver"]
@@ -116,11 +124,11 @@ pred_ls = ["--", "-."]
 #          [[-3,0],[0.25,1.25],[-0.2,0.2]]]
 
 ylims = [
-    [[-2.0, -0.5], [0.7, 1.1], [0.0, 0.2]],
-    [[-2.0, -0.5], [0.7, 1.1], [0.0, 0.2]],
-    [[-2.0, -0.5], [0.7, 1.1], [0.0, 0.2]],
-    [[-2.0, -0.5], [0.7, 1.1], [0.0, 0.2]],
-    [[-2.0, -0.5], [0.7, 1.1], [0.0, 0.2]],
+    [[-2.0, -0.5], [0.5, 1.5], [0.0, 0.2]],
+    [[-2.0, -0.5], [0.5, 1.5], [0.0, 0.2]],
+    [[-2.0, -1.0], [0.82, 0.9], [0.0, 0.2]],
+    [[-2.0, -1.0], [0.82, 0.9], [0.0, 0.2]],
+    [[-2.0, -1.0], [0.82, 0.9], [0.0, 0.2]],
 ]
 
 
@@ -163,15 +171,15 @@ eParam = Lorenz63.get_eParamVar()
 #             ax.set_ylim(ylims[p_idx][param_var_idx])
 #             if p_idx == 0:
 #                 ax.set_title(f"$d\\bar{{z}}/d\\{param}$")
-#             if p_idx < len(sens_results_list)-1:
-#                 ax.set_xticklabels([])
+#             # if p_idx < len(sens_results_list)-1:
+#             #     ax.set_xticklabels([])
 #             if p_idx == len(sens_results_list)-1:
 #                 ax.set_xlabel("$N_{ensemble}$")
 #             if param_var_idx == 0:
 #                 ax.set_ylabel(f"$\\tau = {sens_results['loop_times'][0]}$")
 #             # plt.grid(visible=True)
-#             # ax.set_xlim([-500,10000])
-#             ax.hlines(direct_estimate[param_var_idx], 0, 10000, color='black', linestyle='-.')
+#             # ax.set_xlim([-100,1000])
+#             ax.hlines(direct_estimate[param_var_idx], 0, 100000, color='black', linestyle='-.')
 
 # sens_results = pp.unpickle_file(
 #             model_path / f"sensitivity_results_{sens_results_name}.pickle"
@@ -224,7 +232,7 @@ for i, param in enumerate(param_vars):
     vis.plot_lines(
         sens_results[f"{sens_param_name}_list"],
         dJdp_true_mean[:, eParam[param], 0],
-        dJdp_esn_mean[:, eParam[param], 0],
+        # dJdp_esn_mean[:, eParam[param], 0],
         linestyle=[true_ls[0], pred_ls[0]],
         linewidth=[true_lw[0], pred_lw[0]],
         color=[true_color[0], pred_color[0]],
@@ -233,13 +241,13 @@ for i, param in enumerate(param_vars):
     )
 
 # legend_str=["$\\tau = 1.5 \; LT$","$\\tau = 1.5 \; LT$, ESN","$\\tau = 1.0 \; LT$","$\\tau = 1.0 \; LT$, ESN"]
-legend_str = ["True Adjoint", "ESN Adjoint", "Direct Estimate"]
+legend_str = ["True Adjoint", "ESN Adjoint"]
 plt.figlegend(
     legend_str, loc="upper center", ncol=len(legend_str), bbox_to_anchor=(0.5, 1.2)
 )
 if save_fig:
     fig.savefig(
-        f"paper_chaotic/graphics/figure_ESN_4_{sens_param_name}.png",
+        f"paper_chaotic/graphics/figure_ESN_4_{sens_param_name}_fine_2.png",
         bbox_inches="tight",
     )
     # fig.savefig(f"paper_chaotic/graphics/figure_{fig_name}_sigma.pdf", bbox_inches="tight")

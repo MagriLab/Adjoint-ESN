@@ -15,14 +15,19 @@ import adjoint_esn.utils.postprocessing as post
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam, get_eVar
 
-model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
+# model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
+model_path = Path("local_results/rijke/run_20240307_175258")
 data_dir = Path("data")
 
+# test_time = 100
+# test_transient_time = 200
 test_time = 100
 test_transient_time = 200
 n_ensemble = 1
 eta_1_init = 1.5
 
+# beta_list = np.arange(0.5, 5.5, 0.1)
+# tau_list = np.arange(0.05, 0.35, 0.01)
 beta_list = np.arange(0.5, 5.5, 0.1)
 tau_list = np.arange(0.05, 0.35, 0.01)
 p_list = pp.make_param_mesh([beta_list, tau_list])
@@ -118,6 +123,7 @@ for p_idx, p in enumerate(train_param_list):
         u_f_order=u_f_order,
         noise_level=noise_level,
         random_seed=random_seed,
+        tau=p_sim["tau"],
     )
 
     for loop_name in loop_names:

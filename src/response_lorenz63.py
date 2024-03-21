@@ -25,13 +25,13 @@ traj_time = 1100  # length of each trajectory
 # regime which we apply perturbation to
 eParam = Lorenz63.get_eParamVar()
 test_p = np.zeros((3))
-# test_p[eParam.beta] = 8/3
-# test_p[eParam.rho] = 28.0
-# test_p[eParam.sigma] = 10.0
+test_p[eParam.beta] = 8 / 3
+test_p[eParam.rho] = 28.0
+test_p[eParam.sigma] = 10.0
 
-test_p[eParam.beta] = 1.75
-test_p[eParam.rho] = 52.0
-test_p[eParam.sigma] = 13.0
+# test_p[eParam.beta] = 1.75
+# test_p[eParam.rho] = 52.0
+# test_p[eParam.sigma] = 13.0
 
 # list of initial conditions
 y_init_list = [
@@ -73,7 +73,14 @@ loop_time_arr = np.arange(0.05, plot_time + 0.05, 0.05)
 #         "local_results/lorenz63/run_20240206_181642"
 #     )
 # ESN 4
-model_path = Path("local_results/lorenz63/run_20240208_121804")
+# model_path = Path("local_results/lorenz63/run_20240208_121804")
+
+# ESN 5
+# model_path = Path("local_results/lorenz63/run_20240210_113120")
+
+# ESN 6
+model_path = Path("local_results/lorenz63/run_20240211_095248")
+
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 # which regimes to use for training and validation
@@ -332,7 +339,7 @@ for y_init_idx, y_init in enumerate(y_init_list):
             linewidth=[true_lw, pred_lw],
         )
     fig1.savefig(
-        f"paper_chaotic/graphics/figure_response_2_init_{y_init_idx}_ESN_4.png",
+        f"paper_chaotic/graphics/figure_response_init_{y_init_idx}_ESN_6.png",
         bbox_inches="tight",
     )
 plt.show()

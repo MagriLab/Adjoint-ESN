@@ -18,19 +18,45 @@ from adjoint_esn.utils.enums import eParam
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 12})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 
 # N_reservoir = 1200, connectivity = 20
+# model_paths = [
+#     Path("local_results/standard/run_20231031_152932"),  # standard with [eta,mu]
+#     Path("local_results/standard/run_20231031_152907"),  # standard with [eta,mu,v]
+#     Path("local_results/rijke/run_20231029_153121"),  # rijke with reservoir
+# ]
+
+# save_paths = [
+#     "20231101_182139",
+#     "20231101_153934",
+#     "20231031_010509",
+# ]
+
 model_paths = [
-    Path("local_results/standard/run_20231031_152932"),  # standard with [eta,mu]
-    Path("local_results/standard/run_20231031_152907"),  # standard with [eta,mu,v]
-    Path("local_results/rijke/run_20231029_153121"),  # rijke with reservoir
+    Path(
+        "local_results/rijke/run_20231029_153121"
+    ),  # rijke with zero noise hyperparameters
+    Path("local_results/rijke/run_20231029_153121"),
+    Path("local_results/rijke/run_20231029_153121"),
 ]
 
+# save_paths = [
+#     "20231031_010509", # rijke with zero noise
+#     "20240223_133247", # rijke with 1% noise
+#     "20240223_133240", # rijke with 5% noise
+# ]
+
+# save_paths = [
+#     "20231031_010509", # rijke with zero noise
+#     "20240223_133240", # rijke with 5% noise Wout from 1 noise realization
+#     "20240227_174536", # rijke with 5% noise Wout mean
+# ]
+
 save_paths = [
-    "20231101_182139",
-    "20231101_153934",
-    "20231031_010509",
+    "20240304_171954",  # rijke 5% noise tikh = 1e-5
+    "20240304_172135",  # rijke 5% noise tikh = 1e-4
+    "20240304_172233",  # rijke 5% noise tikh = 1e-3
 ]
 
 titles = ["(a)", "(b)", "(c)"]
@@ -40,6 +66,7 @@ for model_idx, model_path in enumerate(model_paths):
     # print model properties
     config = post.load_config(model_path)
     results = pp.unpickle_file(model_path / "results.pickle")[0]
+
     if "top_idx" in results.keys():
         top_idx = results["top_idx"]
     else:
@@ -60,8 +87,13 @@ for model_idx, model_path in enumerate(model_paths):
     error_results = pp.unpickle_file(model_path / f"error_results_{save_path}.pickle")[
         0
     ]
+    print(error_results["tikhonov"])
     error_mat = error_results["error"]  # params x folds x ensemble
-    error_mat_mean = np.mean(error_mat, axis=2)  # take the mean over ensembles
+    # error_mat_mean = np.mean(error_mat, axis=2)  # take the mean over ensembles
+    if error_mat.shape[2] > 1:
+        error_mat_mean = error_mat[:, :, 4]
+    else:
+        error_mat_mean = error_mat[:, :, 0]
     error_mat_mean = np.mean(error_mat_mean, axis=1)  # take mean over folds
 
     beta_list = error_results["beta_list"]

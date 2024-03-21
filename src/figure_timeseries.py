@@ -24,16 +24,20 @@ rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
 save_fig = True
 same_washout = False
+
 model_path = Path(
     "local_results/rijke/run_20231029_153121"
 )  # rijke with reservoir, trained on beta = 1,2,3,4,5
 
 # model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
 
+# model_path = Path("local_results/rijke/run_20240307_175258")  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+model_name = "1"
+
 data_dir = Path("data")
 
 
-def get_asd(dt, y, remove_mean=True, periodic=False):
+def get_psd(dt, y, remove_mean=True, periodic=False):
     # remove mean
     if remove_mean == True:
         y = y - np.mean(y)
@@ -58,12 +62,12 @@ def get_asd(dt, y, remove_mean=True, periodic=False):
         y_pre_fft = y
 
     # find asd
-    omega, asd = signals.amplitude_spectrum(y_pre_fft, dt)
+    omega, psd = signals.power_spectral_density(y_pre_fft, dt)
 
     # to get the harmonic frequency from the asd
     # asd_peaks = find_peaks(asd, threshold=0.1)[0]
     # harmonic_freq = omega[asd_peaks][0]
-    return omega, asd
+    return omega, psd
 
 
 fig_name = "chaotic"
@@ -103,12 +107,32 @@ elif fig_name == "chaotic":
     # pred_phase_lw = 1
     periodic = False
     title = "(c)"
+elif fig_name == "chaotic2":
+    test_param_list = [[6.8, 0.19]]  # [[7.5, 0.22]]
+    # phase_space_steps_arr = [100]
+    # true_phase_lw = 1
+    # pred_phase_lw = 1
+    periodic = False
+    title = "(c)"
+elif fig_name == "chaotic3":
+    test_param_list = [[8.75, 0.23]]  # [[7.5, 0.22]]
+    # phase_space_steps_arr = [100]
+    # true_phase_lw = 1
+    # pred_phase_lw = 1
+    periodic = False
+    title = "(c)"
+elif fig_name == "quasi2":
+    test_param_list = [[6.6, 0.22]]
+    # phase_space_steps_arr = [100]
+    # true_phase_lw = 1
+    # pred_phase_lw = 1
+    periodic = False
+    title = "(b)"
 
-n_ensemble = 10
-test_loop_times = [20, 500]
+n_ensemble = 5
 test_loop_names = ["short", "long"]
-test_sim_time = 1000
-figure_size = (15, 4)
+test_loop_times = [20, 5000]
+figure_size = (15, 10)
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
@@ -153,7 +177,7 @@ output_vars = config.model.output_vars
 eInputVar = get_eVar(input_vars, N_g)
 eOutputVar = get_eVar(output_vars, N_g)
 
-plt_idx = [eOutputVar.mu_1]
+plt_idx = [eOutputVar.mu_1, eOutputVar.mu_2, eOutputVar.mu_3, eOutputVar.mu_4]
 plt_idx_pairs = [[eOutputVar.mu_1, eOutputVar.mu_2]]
 
 # which system parameter is passed to the ESN
@@ -210,6 +234,7 @@ for p_idx, p in enumerate(train_param_list):
         u_f_order=u_f_order,
         noise_level=noise_level,
         random_seed=random_seed,
+        tau=p_sim["tau"],
     )
 
     for loop_name in loop_names:
@@ -262,6 +287,7 @@ for e_idx in range(n_ensemble):
     )
     ESN_list[e_idx] = my_ESN
 
+test_sim_time = max(test_loop_times) + transient_time + washout_time
 # Predict on the test dataset
 for p_idx, p in enumerate(test_param_list):
     fig = plt.figure(figsize=figure_size, constrained_layout=True)
@@ -293,6 +319,7 @@ for p_idx, p in enumerate(test_param_list):
         N_g=N_g,
         u_f_order=u_f_order,
         start_idxs=[0, 0],
+        tau=p_sim["tau"],
     )
 
     Y_PRED_SHORT = [None] * n_ensemble
@@ -435,57 +462,57 @@ for p_idx, p in enumerate(test_param_list):
     # # Plot ASD
     for i in range(len(plt_idx)):
         ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, i + 1)
-        omega, asd = get_asd(
+        omega, psd = get_psd(
             network_dt,
             data["long"]["y"][:, plt_idx[i]],
             remove_mean=True,
             periodic=periodic,
         )
-        ASD_PRED = [None] * n_ensemble
+        PSD_PRED = [None] * n_ensemble
         OMEGA_PRED = [None] * n_ensemble
         for e_idx in range(n_ensemble):
-            OMEGA_PRED[e_idx], ASD_PRED[e_idx] = get_asd(
+            OMEGA_PRED[e_idx], PSD_PRED[e_idx] = get_psd(
                 network_dt,
                 Y_PRED_LONG[e_idx][:, plt_idx[i]],
                 remove_mean=True,
                 periodic=periodic,
             )
         vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
-            asd_y=ASD_PRED[best_idx],
+            asd_y=PSD_PRED[best_idx],
             omega_y=OMEGA_PRED[best_idx],
-            asd_y_base=asd,
+            asd_y_base=psd,
             omega_y_base=omega,
             range=2,
             xlabel="$\omega$",
-            ylabel=f"$ASD(\{plt_idx[i].name})$",
+            ylabel=f"$PSD(\{plt_idx[i].name})$",
             linestyle=[true_ls, pred_ls],
             linewidth=[true_lw, pred_lw],
             color=[true_color, pred_color],
         )
         plt.legend(["True", "ESN"], loc="upper right")
     ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
-    omega, asd = get_asd(
+    omega, psd = get_psd(
         network_dt,
         sens.acoustic_energy_inst(data["long"]["y"], N_g),
         remove_mean=True,
         periodic=periodic,
     )
-    ASD_PRED = [None] * n_ensemble
+    PSD_PRED = [None] * n_ensemble
     OMEGA_PRED = [None] * n_ensemble
     for e_idx in range(n_ensemble):
-        OMEGA_PRED[e_idx], ASD_PRED[e_idx] = get_asd(
+        OMEGA_PRED[e_idx], PSD_PRED[e_idx] = get_psd(
             network_dt,
             sens.acoustic_energy_inst(Y_PRED_LONG[e_idx], N_g),
             periodic=periodic,
         )
-    vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
-        asd_y=ASD_PRED[best_idx],
+    vis.plot_asd(  # *[PSD_PRED[e] for e in range(n_ensemble)],
+        asd_y=PSD_PRED[best_idx],
         omega_y=OMEGA_PRED[best_idx],
-        asd_y_base=asd,
+        asd_y_base=psd,
         omega_y_base=omega,
         range=10,
         xlabel="$\omega$",
-        ylabel="$ASD(E_{ac})$",
+        ylabel="$PSD(E_{ac})$",
         linestyle=[true_ls, pred_ls],
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
@@ -494,7 +521,10 @@ for p_idx, p in enumerate(test_param_list):
     subfigs[0].suptitle(title, x=0.0, y=1.025)
     if save_fig:
         if len(test_param_list) == 1:
-            fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+            fig.savefig(
+                f"paper/graphics/figure_{fig_name}_model_{model_name}_psd.png",
+                bbox_inches="tight",
+            )
         else:
             fig.savefig(
                 f"paper/graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"

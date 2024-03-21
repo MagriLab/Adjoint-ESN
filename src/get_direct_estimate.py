@@ -21,7 +21,7 @@ def objective_fun(u):
 
 
 def Lyapunov_Time(sys, params, transient_time, sim_dt, integrator):
-    sim_time = 200 + transient_time
+    sim_time = 1000 + transient_time
     my_sys, y_sim, t_sim = pp.load_data_dyn_sys(
         sys, params, sim_time, sim_dt, y_init=[-2.4, -3.7, 14.98], integrator=integrator
     )

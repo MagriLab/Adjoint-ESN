@@ -169,8 +169,8 @@ def main(args):
     for e_idx in range(n_ensemble):
         # fix the seeds
         if n_ensemble == 1:
-            input_seeds = [20,21,22]
-            reservoir_seeds = [23,24]
+            input_seeds = [20, 21, 22]
+            reservoir_seeds = [23, 24]
         else:
             input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
             reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
@@ -229,7 +229,12 @@ def main(args):
         test_washout_time = config.model.washout_time
     else:
         test_washout_time = 0
-    # sim_dt = network_dt
+
+    # add fast jacobian condition
+    if config.model.input_only_mode == False and config.model.r2_mode == False:
+        fast_jac = True
+    print("Fast jac condition:", fast_jac)
+
     for p_idx, p in enumerate(p_list):
         p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
 
@@ -289,14 +294,13 @@ def main(args):
             damping="modal",
         )
         print("Running true.", flush=True)
-        for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
-            print("Loop time:", test_loop_time)
-            N_transient_ = pp.get_steps(test_transient_time, sim_dt)
-            N_washout_ = pp.get_steps(test_washout_time, sim_dt)
-            y_init_prev = y_sim[N_transient_ + N_washout_]
-            for loop_idx in range(n_loops):
-                if loop_idx % 1 == 0:
-                    print(f"Loop {loop_idx}")
+        if args.get_adjoint_of == "both" or args.get_adjoint_of == "true":
+            for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
+                print("Loop time:", test_loop_time)
+                N_transient_ = pp.get_steps(test_transient_time, sim_dt)
+                N_washout_ = pp.get_steps(test_washout_time, sim_dt)
+                y_init_prev = y_sim[N_transient_ + N_washout_]
+                for loop_idx in range(n_loops):
                     y_bar, t_bar = pp.load_data(
                         beta=p_sim["beta"],
                         tau=p_sim["tau"],
@@ -308,149 +312,158 @@ def main(args):
                         integrator=integrator,
                         y_init=y_init_prev,
                     )
-                # print(y_bar[0])
-                y_init_prev = y_bar[-1]
-                for method_name in methods:
-                    if method_name == "direct":
-                        dJdp["true"][method_name][
-                            p_idx, :, loop_idx, loop_time_idx
-                        ] = sens.true_direct_sensitivity(
-                            my_rijke, t_bar, y_bar, integrator
-                        )
-                    elif method_name == "adjoint":
-                        dJdp["true"][method_name][
-                            p_idx, :, loop_idx, loop_time_idx
-                        ] = sens.true_adjoint_sensitivity(
-                            my_rijke, t_bar, y_bar, integrator
-                        )
-                    elif method_name == "numerical":
-                        dJdp["true"][method_name][
-                            p_idx, :, loop_idx, loop_time_idx
-                        ] = sens.true_finite_difference_sensitivity(
-                            my_rijke,
-                            t_bar,
-                            y_bar,
-                            h=1e-5,
-                            h_tau=network_dt,
-                            method=finite_difference_method,
-                            integrator=integrator,
-                        )
-                    print(
-                        f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx, :, loop_idx, loop_time_idx]}',
-                        flush=True,
-                    )
-
-                J["true"][p_idx, loop_idx, loop_time_idx] = sens.acoustic_energy(
-                    y_bar[1:, :], N_g
-                )
-                print(
-                    f'True J = {J["true"][p_idx, loop_idx, loop_time_idx]}', flush=True
-                )
-
-        for esn_idx in range(n_ensemble):
-            my_ESN = ESN_list[esn_idx]
-            # Wash-out phase to get rid of the effects of reservoir states initialised as zero
-            # initialise the reservoir states before washout
-            N = len(data["loop_0"]["u"])
-            x0_washout = np.zeros(my_ESN.N_reservoir)
-            N_transient_test = pp.get_steps(test_transient_time, network_dt)
-
-            my_ESN.tau = p_sim["tau"]
-            # let the ESN run in open-loop for the wash-out
-            # get the initial reservoir to start the actual open/closed-loop,
-            # which is the last reservoir state
-            if args.same_washout == True:
-                X_tau = my_ESN.open_loop(
-                    x0=x0_washout,
-                    U=data["loop_0"]["u_washout"],
-                    P=data["loop_0"]["p_washout"],
-                )[-my_ESN.N_tau - 1 :, :]
-                P_new = np.vstack(
-                    (
-                        data["loop_0"]["p_washout"][-my_ESN.N_tau - 1 :, :],
-                        data["loop_0"]["p"],
-                    )
-                )
-                X_pred, Y_pred = my_ESN.closed_loop(X_tau, N_t=N, P=P_new)
-            else:
-                # let evolve for a longer time and then remove washout
-                N_transient_test = pp.get_steps(
-                    test_transient_time, config.model.network_dt
-                )
-                N_washout = pp.get_steps(
-                    config.model.washout_time, config.model.network_dt
-                )
-                N_long = N_transient_test + N
-
-                P_washout = data["loop_0"]["p"][0] * np.ones((N_washout, 1))
-                P_long = data["loop_0"]["p"][0] * np.ones((N_long, 1))
-                X_pred, Y_pred = my_ESN.closed_loop_with_washout(
-                    U_washout=u_washout_auto,
-                    N_t=N_long,
-                    P_washout=P_washout,
-                    P=P_long,
-                )
-
-                # remove transient
-                X_tau = X_pred[
-                    N_transient_test - my_ESN.N_tau - 1 : N_transient_test, :
-                ]
-                X_pred = X_pred[N_transient_test:, :]
-                Y_pred = Y_pred[N_transient_test:, :]
-
-            for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
-                print("Loop time:", test_loop_time, flush=True)
-                N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
-                p_loop = np.vstack(
-                    (
-                        data["loop_0"]["p"][-my_ESN.N_tau - 1 :, :],
-                        data["loop_0"]["p"],
-                    )
-                )
-                for loop_idx in range(n_loops):
-                    if loop_idx % 1 == 0:
-                        print(f"Loop {loop_idx}", flush=True)
-                    # split the prediction data
-                    x_pred_loop, y_pred_loop = my_ESN.closed_loop(
-                        X_tau, N_t=N_loop, P=p_loop
-                    )
-                    # print(y_pred_loop[0])
+                    y_init_prev = y_bar[-1]
                     for method_name in methods:
                         if method_name == "direct":
-                            dJdp["esn"][method_name][
-                                esn_idx, p_idx, :, loop_idx, loop_time_idx
-                            ] = my_ESN.direct_sensitivity(
-                                x_pred_loop, y_pred_loop, N_loop, X_tau
+                            dJdp["true"][method_name][
+                                p_idx, :, loop_idx, loop_time_idx
+                            ] = sens.true_direct_sensitivity(
+                                my_rijke, t_bar, y_bar, integrator
                             )
                         elif method_name == "adjoint":
-                            dJdp["esn"][method_name][
-                                esn_idx, p_idx, :, loop_idx, loop_time_idx
-                            ] = my_ESN.adjoint_sensitivity(
-                                x_pred_loop, y_pred_loop, N_loop, X_tau
+                            dJdp["true"][method_name][
+                                p_idx, :, loop_idx, loop_time_idx
+                            ] = sens.true_adjoint_sensitivity(
+                                my_rijke, t_bar, y_bar, integrator
                             )
                         elif method_name == "numerical":
-                            dJdp["esn"][method_name][
-                                esn_idx, p_idx, :, loop_idx, loop_time_idx
-                            ] = my_ESN.finite_difference_sensitivity(
-                                X=x_pred_loop,
-                                Y=y_pred_loop,
-                                P=p_loop,
-                                N=N_loop,
-                                X_tau=X_tau,
+                            dJdp["true"][method_name][
+                                p_idx, :, loop_idx, loop_time_idx
+                            ] = sens.true_finite_difference_sensitivity(
+                                my_rijke,
+                                t_bar,
+                                y_bar,
+                                h=1e-5,
+                                h_tau=network_dt,
                                 method=finite_difference_method,
+                                integrator=integrator,
                             )
+                    J["true"][p_idx, loop_idx, loop_time_idx] = sens.acoustic_energy(
+                        y_bar[1:, :], N_g
+                    )
+                    if loop_idx % 100 == 0:
+                        print(f"Loop {loop_idx}")
                         print(
-                            f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx, loop_time_idx]}',
+                            f'True dJ/dp, {method_name} = {dJdp["true"][method_name][p_idx, :, loop_idx, loop_time_idx]}',
                             flush=True,
                         )
-                    X_tau = x_pred_loop[-my_ESN.N_tau - 1 :]
+                        print(
+                            f'True J = {J["true"][p_idx, loop_idx, loop_time_idx]}',
+                            flush=True,
+                        )
+        if args.get_adjoint_of == "both" or args.get_adjoint_of == "esn":
+            for esn_idx in range(n_ensemble):
+                my_ESN = ESN_list[esn_idx]
+                # Wash-out phase to get rid of the effects of reservoir states initialised as zero
+                # initialise the reservoir states before washout
+                N = len(data["loop_0"]["u"])
+                x0_washout = np.zeros(my_ESN.N_reservoir)
+                N_transient_test = pp.get_steps(test_transient_time, network_dt)
 
-                    J["esn"][
-                        esn_idx, p_idx, loop_idx, loop_time_idx
-                    ] = sens.acoustic_energy(y_pred_loop[1:], N_g)
-                    print(
-                        f'ESN {esn_idx} J = {J["esn"][esn_idx, p_idx, loop_idx, loop_time_idx]}'
+                my_ESN.tau = p_sim["tau"]
+                # let the ESN run in open-loop for the wash-out
+                # get the initial reservoir to start the actual open/closed-loop,
+                # which is the last reservoir state
+                if args.same_washout == True:
+                    X_tau_1 = my_ESN.open_loop(
+                        x0=x0_washout,
+                        U=data["loop_0"]["u_washout"],
+                        P=data["loop_0"]["p_washout"],
+                    )[-my_ESN.N_tau - 1 :, :]
+                    P_new = np.vstack(
+                        (
+                            data["loop_0"]["p_washout"][-my_ESN.N_tau - 1 :, :],
+                            data["loop_0"]["p"],
+                        )
                     )
+                    X_pred, Y_pred = my_ESN.closed_loop(X_tau_1, N_t=N, P=P_new)
+                else:
+                    # let evolve for a longer time and then remove washout
+                    N_transient_test = pp.get_steps(
+                        test_transient_time, config.model.network_dt
+                    )
+                    N_washout = pp.get_steps(
+                        config.model.washout_time, config.model.network_dt
+                    )
+                    N_long = N_transient_test + N
+
+                    P_washout = data["loop_0"]["p"][0] * np.ones((N_washout, 1))
+                    P_long = data["loop_0"]["p"][0] * np.ones((N_long, 1))
+                    X_pred, Y_pred = my_ESN.closed_loop_with_washout(
+                        U_washout=u_washout_auto,
+                        N_t=N_long,
+                        P_washout=P_washout,
+                        P=P_long,
+                    )
+
+                    # remove transient
+                    X_tau_1 = X_pred[
+                        N_transient_test - my_ESN.N_tau - 1 : N_transient_test, :
+                    ]
+                    X_pred = X_pred[N_transient_test:, :]
+                    Y_pred = Y_pred[N_transient_test:, :]
+
+                for loop_time_idx, test_loop_time in enumerate(test_loop_time_arr):
+                    X_tau = X_tau_1  # reset X_tau
+                    print("Loop time:", test_loop_time, flush=True)
+                    N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
+                    p_loop = np.vstack(
+                        (
+                            data["loop_0"]["p"][-my_ESN.N_tau - 1 :, :],
+                            data["loop_0"]["p"],
+                        )
+                    )
+                    for loop_idx in range(n_loops):
+                        # split the prediction data
+                        x_pred_loop, y_pred_loop = my_ESN.closed_loop(
+                            X_tau, N_t=N_loop, P=p_loop
+                        )
+                        for method_name in methods:
+                            if method_name == "direct":
+                                dJdp["esn"][method_name][
+                                    esn_idx, p_idx, :, loop_idx, loop_time_idx
+                                ] = my_ESN.direct_sensitivity(
+                                    x_pred_loop,
+                                    y_pred_loop,
+                                    N_loop,
+                                    X_tau,
+                                    fast_jac=fast_jac,
+                                )
+                            elif method_name == "adjoint":
+                                dJdp["esn"][method_name][
+                                    esn_idx, p_idx, :, loop_idx, loop_time_idx
+                                ] = my_ESN.adjoint_sensitivity(
+                                    x_pred_loop,
+                                    y_pred_loop,
+                                    N_loop,
+                                    X_tau,
+                                    fast_jac=fast_jac,
+                                )
+                            elif method_name == "numerical":
+                                dJdp["esn"][method_name][
+                                    esn_idx, p_idx, :, loop_idx, loop_time_idx
+                                ] = my_ESN.finite_difference_sensitivity(
+                                    X=x_pred_loop,
+                                    Y=y_pred_loop,
+                                    P=p_loop,
+                                    N=N_loop,
+                                    X_tau=X_tau,
+                                    method=finite_difference_method,
+                                )
+                        X_tau = x_pred_loop[-my_ESN.N_tau - 1 :]
+                        J["esn"][
+                            esn_idx, p_idx, loop_idx, loop_time_idx
+                        ] = sens.acoustic_energy(y_pred_loop[1:], N_g)
+
+                        if loop_idx % 100 == 0:
+                            print(f"Loop {loop_idx}", flush=True)
+                            print(
+                                f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx, loop_time_idx]}',
+                                flush=True,
+                            )
+                            print(
+                                f'ESN {esn_idx} J = {J["esn"][esn_idx, p_idx, loop_idx, loop_time_idx]}'
+                            )
 
     sensitivity_results = {
         "dJdp": dJdp,
@@ -459,6 +472,7 @@ def main(args):
         "tau_list": tau_list,
         "same_washout": args.same_washout,
         "eta_1_init": args.eta_1_init,
+        "loop_times": args.loop_times,
     }
 
     print(f"Saving results to {model_path}.", flush=True)
@@ -472,13 +486,14 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_name", type=str)
-    parser.add_argument("--beta", nargs="+", type=float, default=[7.2])
-    parser.add_argument("--tau", nargs="+", type=float, default=[0.2])
+    parser.add_argument("--beta", nargs="+", type=float)
+    parser.add_argument("--tau", nargs="+", type=float)
     parser.add_argument("--same_washout", default=False, action="store_true")
     parser.add_argument("--eta_1_init", default=1.0, type=float)
     parser.add_argument("--train_noise_level", type=float, default=0.0)
     parser.add_argument("--n_loops", default=10, type=int)
     parser.add_argument("--n_ensemble_esn", default=1, type=int)
-    parser.add_argument("--loop_times", nargs="+", default=[0.1], type=float)
+    parser.add_argument("--loop_times", nargs="+", type=float)
+    parser.add_argument("--get_adjoint_of", type=str, default="both")
     parsed_args = parser.parse_args()
     main(parsed_args)

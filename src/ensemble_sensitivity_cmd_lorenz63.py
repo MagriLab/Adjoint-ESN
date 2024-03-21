@@ -276,7 +276,7 @@ def main(args):
             print("Loop time:", test_loop_time)
             y_init_prev = data["loop_0"]["u"][0]
             for loop_idx in range(n_loops):
-                if loop_idx % 50 == 0:
+                if loop_idx % 1000 == 0:
                     print(f"Loop {loop_idx}")
                 my_sys, y_bar, t_bar = pp.load_data_dyn_sys(
                     Lorenz63,
@@ -409,10 +409,10 @@ def main(args):
                                 method=finite_difference_method,
                                 J_fun=objective_fun,
                             )
-                        # print(
-                        #     f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
-                        #     flush=True,
-                        # )
+                        print(
+                            f'ESN {esn_idx} dJ/dp, {method_name} = {dJdp["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
+                            flush=True,
+                        )
                     J["esn"][esn_idx, p_idx, loop_idx, loop_time_idx] = objective_fun(
                         y_pred_loop[1:]
                     )

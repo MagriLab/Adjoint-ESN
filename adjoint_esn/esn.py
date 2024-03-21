@@ -733,6 +733,20 @@ class ESN:
         return dfdx
 
     @property
+    def dfdx_const(self):
+        if not hasattr(self, "_dfdx_const"):
+            self._dfdx_const = self.dfdu_dudx_const + self.alpha * self.W.toarray()
+        return self._dfdx_const
+
+    def fast_jac(self, dtanh):
+        """Faster implementation of the Jacobian for the basic ESN
+        Only valid when input_only_mode = False and r2_mode = False
+        """
+        dfdx = np.multiply(self.dfdx_const, dtanh)
+        dfdx.ravel()[:: dfdx.shape[1] + 1] += 1 - self.alpha
+        return dfdx
+
+    @property
     def dfdp_const(self):
         # constant part of gradient of x(i+1) with respect to p
         if not hasattr(self, "_dfdp_const"):
@@ -794,6 +808,7 @@ class ESN:
             "_dfdx_u",
             "_dfdp_const",
             "_dydf",
+            "_dfdx_const",
         ]
         for attr in attr_list:
             if hasattr(self, attr):
@@ -807,7 +822,7 @@ class ESN:
         yy[: 2 * N_g] = Y[: 2 * N_g]
         return 1 / 2 * yy
 
-    def direct_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None):
+    def direct_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using DIRECT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -830,6 +845,12 @@ class ESN:
         if dJdy_fun is None:
             dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
 
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
         # initialize direct variables, dx(i+1)/dp
         # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
         q = np.zeros((N + 1, self.N_reservoir, self.N_param_dim))
@@ -844,7 +865,7 @@ class ESN:
             dfdp = self.dfdp(dtanh)
 
             # jacobian of the reservoir dynamics
-            jac = self.jac(dtanh, X[i - 1, :])
+            jac = jac_fun(dtanh, X[i - 1, :])
 
             # integrate direct variables forwards in time
             q[i] = dfdp + np.dot(jac, q[i - 1])
@@ -861,7 +882,7 @@ class ESN:
 
         return dJdp
 
-    def adjoint_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None):
+    def adjoint_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
         """Sensitivity of the ESN with respect to the parameters
         Calculated using ADJOINT method
         Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
@@ -883,6 +904,12 @@ class ESN:
         # if the objective is not defined the default is the acoustic energy
         if dJdy_fun is None:
             dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
 
         # initialize adjoint variables
         v = np.zeros((N + 1, self.N_reservoir))
@@ -916,7 +943,7 @@ class ESN:
             dJdf = (1 / N) * np.dot(dJdy, dydf).T
 
             # jacobian of the reservoir dynamics
-            jac = self.jac(dtanh, X[i - 1, :])
+            jac = jac_fun(dtanh, X[i - 1, :])
 
             # integrate adjoint variables backwards in time
             v[i - 1] = np.dot(jac.T, v[i]) + dJdf
