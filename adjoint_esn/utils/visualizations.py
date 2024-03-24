@@ -249,12 +249,13 @@ def plot_asd(
     ylabel=None,
     legend=None,
     title=None,
+    alpha=1.0,
     **line_specs,
 ):
     plt.plot(omega_y_base, asd_y_base, **get_line_specs(line_specs, 0))
     if isinstance(asd_y, list):
         for i, (asd_yy, omega_yy) in enumerate(zip(asd_y, omega_y)):
-            plt.plot(omega_yy, asd_yy, **get_line_specs(line_specs, 1 + i))
+            plt.plot(omega_yy, asd_yy, **get_line_specs(line_specs, 1 + i), alpha=alpha)
     else:
         plt.plot(omega_y, asd_y, **get_line_specs(line_specs, 1))
 
