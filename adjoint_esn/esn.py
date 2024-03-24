@@ -815,9 +815,11 @@ class ESN:
                 delattr(self, attr)
 
     def acoustic_energy(self, Y, N_g):
-        return 1 / 4 * np.mean(np.sum(Y[0 : 2 * N_g] ** 2, axis=1))
+        # Y matrix
+        return 1 / 4 * np.mean(np.sum(Y[:, 0 : 2 * N_g] ** 2, axis=1))
 
     def dacoustic_energy(self, Y, N_g):
+        # Y vector
         yy = np.zeros_like(Y)
         yy[: 2 * N_g] = Y[: 2 * N_g]
         return 1 / 2 * yy

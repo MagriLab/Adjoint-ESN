@@ -56,8 +56,11 @@ save_paths_tau = [
     "20231218_194028",  # beta = 3.75
     "20231218_193704",  # beta = 4.5
 ]
-true_color = "silver"
-pred_color = "tab:red"
+
+true_color = "#C7C7C7"  # light grey
+# pred_color = "#03BDAB"  # teal
+pred_color = "#5D00E6"  # dark purple
+
 true_lw = 6.0
 pred_lw = 2.0
 true_ls = "-"
@@ -141,9 +144,9 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         plt.xlabel(f"$\\{vary_param}$")
         plt.ylabel(f"$dJ/d\\{i.name}$")
         plt.title(f"$\\{not_vary_param} = {p_list[0, eParam[not_vary_param]]}$")
-        if j == 0 and k == 0:
-            plt.legend(["True", "ESN"], loc="upper left")
-        elif j == 0 and k == 1:
+        # if j == 0 and k == 0:
+        #     plt.legend(["True", "ESN"], loc="upper left")
+        if j == 0 and k == 1:
             plt.legend(["True", "ESN"], loc="upper right")
 
         if plot_name == "varying_beta":
@@ -154,5 +157,5 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         ax.grid(visible=True)
 
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}_2.png", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_{fig_name}_v2.png", bbox_inches="tight")
 plt.show()

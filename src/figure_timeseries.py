@@ -21,8 +21,8 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
-rc("grid",alpha=0.6)
-figure_size = (15,4)
+rc("grid", alpha=0.6)
+figure_size = (15, 4)
 
 save_fig = True
 same_washout = False
@@ -30,10 +30,18 @@ same_washout = False
 # model_path = Path(
 #     "local_results/rijke/run_20231029_153121"
 # )  # rijke with reservoir, trained on beta = 1,2,3,4,5
+# model_path = Path(
+#     "local_results/rijke/run_20231029_153121"
+# )  # rijke with reservoir, trained on beta = 1,2,3,4,5
 
 # model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
 
-model_path = Path("local_results/rijke/run_20240307_175258")  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+model_path = Path(
+    "local_results/rijke/run_20240307_175258"
+)  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+model_path = Path(
+    "local_results/rijke/run_20240307_175258"
+)  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
 
 legend_str = ["True", "ESN"]
 data_dir = Path("data")
@@ -74,17 +82,16 @@ def get_amp_spec(dt, y, remove_mean=True, periodic=False):
 
 
 fig_name = "chaotic2"
+fig_name = "chaotic2"
 
 if fig_name == "lco1":
     test_param_list = [[2.0, 0.25]]
     periodic = True
-    titles = [["(a)","(b)","(c)"],
-              ["(d)","(e)","(f)"]]
+    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
 elif fig_name == "lco2":
     test_param_list = [[4.5, 0.12]]
     periodic = True
-    titles = [["(g)","(h)","(i)"],
-              ["(j)","(k)","(l)"]]
+    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
 
 n_ensemble = 1
 test_loop_names = ["short", "long"]
@@ -103,6 +110,7 @@ pred_color = "#5D00E6"  # dark purple
 # pred_color = "#926FDB" # orange
 
 true_lw = 5.0
+pred_lw = 1.5
 pred_lw = 1.5
 true_ls = "-"
 pred_ls = "--"
@@ -457,8 +465,10 @@ for p_idx, p in enumerate(test_param_list):
             linewidth=[true_lw, pred_lw],
             color=[true_color, pred_color],
         )
-        plt.legend(legend_str,
-                   loc="upper right",)
+        plt.legend(
+            legend_str,
+            loc="upper right",
+        )
     ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     omega, amp_spec = get_amp_spec(
         network_dt,
@@ -491,7 +501,5 @@ for p_idx, p in enumerate(test_param_list):
         if len(test_param_list) == 1:
             fig.savefig(f"graphics/figure_{fig_name}_v5.png", bbox_inches="tight")
         else:
-            fig.savefig(
-                f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
-            )
+            fig.savefig(f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight")
 plt.show()

@@ -433,7 +433,7 @@ class RijkeESN(ESN):
 
         # if the objective is not defined the default is the acoustic energy
         if dJdy_fun is None:
-            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
 
         # choose fast jacobian
         if fast_jac == True:

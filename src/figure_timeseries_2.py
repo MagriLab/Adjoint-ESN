@@ -20,7 +20,7 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 same_washout = False
 
 model_paths = [
@@ -31,7 +31,11 @@ model_paths = [
         "local_results/rijke/run_20240307_175258"
     ),  # rijke with reservoir, trained on beta = 6,6.5,7,7.5,8
 ]
-legend_str = ["True", "$\\beta_{\mathrm{train}}=[1,5]$", "$\\beta_{\mathrm{train}}=[6,8]$"]
+legend_str = [
+    "True",
+    "$\\beta_{\mathrm{train}}=[1,5]$",
+    "$\\beta_{\mathrm{train}}=[6,8]$",
+]
 data_dir = Path("data")
 
 
@@ -74,43 +78,38 @@ fig_name = "chaotic2"
 if fig_name == "period_double":
     test_param_list = [[7.5, 0.3]]
     periodic = True
-    titles = [["(a)","(b)","(c)"],
-              ["(d)","(e)","(f)"]]
+    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "quasi":
     test_param_list = [[6.1, 0.2]]
     periodic = False
-    titles = [["(g)","(h)","(i)"],
-              ["(j)","(k)","(l)"]]
+    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "quasi2":
     test_param_list = [[6.6, 0.22]]
     periodic = False
-    titles = [["(g)","(h)","(i)"],
-              ["(j)","(k)","(l)"]]
+    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "chaotic":
     test_param_list = [[7.6, 0.22]]
     periodic = False
-    titles = [["(a)","(b)","(c)"],
-              ["(d)","(e)","(f)"]]
+    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
     LT = 8.5
     t_label = "$t [LT]$"
-    test_loop_times = [4 * LT, 1000 * LT]
+    test_loop_times = [4 * LT, 4 * LT]
 elif fig_name == "chaotic2":
     test_param_list = [[8.7, 0.23]]
     periodic = False
-    titles = [["(g)","(h)","(i)"],
-              ["(j)","(k)","(l)"]]
+    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
     LT = 3.9
     t_label = "$t [LT]$"
-    test_loop_times = [4 * LT, 1000 * LT]
+    test_loop_times = [4 * LT, 4 * LT]
 
 n_ensemble = 1
 test_loop_names = ["short", "long"]
@@ -302,7 +301,7 @@ for p_idx, p in enumerate(test_param_list):
         N_g=N_g,
         sim_time=test_sim_time,
         sim_dt=sim_dt,
-        data_dir=data_dir
+        data_dir=data_dir,
     )
 
     data = pp.create_dataset(
@@ -498,10 +497,7 @@ for p_idx, p in enumerate(test_param_list):
             color=[true_color, pred_color, pred_color2],
             alpha=0.8,
         )
-        plt.legend(legend_str,
-                   loc="upper right",
-                   handlelength=1.0,
-                   handletextpad=0.5)
+        plt.legend(legend_str, loc="upper right", handlelength=1.0, handletextpad=0.5)
     ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     omega, amp_spec = get_amp_spec(
         network_dt,
@@ -536,7 +532,5 @@ for p_idx, p in enumerate(test_param_list):
         if len(test_param_list) == 1:
             fig.savefig(f"graphics/figure_{fig_name}_v5.png", bbox_inches="tight")
         else:
-            fig.savefig(
-                f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
-            )
+            fig.savefig(f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight")
 plt.show()
