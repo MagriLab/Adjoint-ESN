@@ -21,16 +21,19 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
+rc("grid",alpha=0.6)
+figure_size = (15,4)
+
 save_fig = True
 same_washout = False
 
-model_path = Path(
-    "local_results/rijke/run_20231029_153121"
-)  # rijke with reservoir, trained on beta = 1,2,3,4,5
+# model_path = Path(
+#     "local_results/rijke/run_20231029_153121"
+# )  # rijke with reservoir, trained on beta = 1,2,3,4,5
 
 # model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
 
-# model_path = Path("local_results/rijke/run_20240307_175258")  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+model_path = Path("local_results/rijke/run_20240307_175258")  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
 
 legend_str = ["True", "ESN"]
 data_dir = Path("data")
@@ -70,31 +73,39 @@ def get_amp_spec(dt, y, remove_mean=True, periodic=False):
     return omega, amp_spec
 
 
-fig_name = "lco1"
+fig_name = "chaotic2"
 
 if fig_name == "lco1":
     test_param_list = [[2.0, 0.25]]
     periodic = True
-    title = "(a)"
+    titles = [["(a)","(b)","(c)"],
+              ["(d)","(e)","(f)"]]
 elif fig_name == "lco2":
     test_param_list = [[4.5, 0.12]]
     periodic = True
-    title = "(b)"
+    titles = [["(g)","(h)","(i)"],
+              ["(j)","(k)","(l)"]]
 
-n_ensemble = 5
+n_ensemble = 1
 test_loop_names = ["short", "long"]
 test_loop_times = [20, 2000]
-figure_size = (15, 10)
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
+# color set 1
 true_color = "#C7C7C7"  # light grey
-pred_color = "#03BDAB"  # teal
+# pred_color = "#03BDAB"  # teal
+pred_color = "#5D00E6"  # dark purple
+
+# color set 2
+# true_color = "#3CB371"  # green
+# # pred_color = "#FEAC16"  # purple
+# pred_color = "#926FDB" # orange
 
 true_lw = 5.0
-pred_lw = 3.0
+pred_lw = 1.5
 true_ls = "-"
-pred_ls = "-"
+pred_ls = "--"
 
 # DATA creation
 integrator = "odeint"
@@ -360,10 +371,8 @@ for p_idx, p in enumerate(test_param_list):
             linewidth=[true_lw, pred_lw],
             color=[true_color, pred_color],
         )
-        # if i == 0:
-        #     ax.legend(["True", "ESN"], loc="center", bbox_to_anchor=[0.5, 1.2], ncol=2)
-        # if i < len(plt_idx)-1:
-        #     ax.set_xticklabels([])
+        ax.annotate(titles[0][0], xy=(0.015, 0.85), xycoords="axes fraction")
+
     ax = subfigs[0].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_lines(
         data["short"]["t"] - data["short"]["t"][0],
@@ -375,6 +384,7 @@ for p_idx, p in enumerate(test_param_list):
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
+    ax.annotate(titles[1][0], xy=(0.015, 0.85), xycoords="axes fraction")
     # Plot phase plot of the best of ensemble
     # phase_space_steps = pp.get_steps(phase_space_steps_arr[p_idx], network_dt)
 
@@ -403,6 +413,7 @@ for p_idx, p in enumerate(test_param_list):
             linewidth=[true_lw, pred_lw],
             color=[true_color, pred_color],
         )
+        ax.annotate(titles[0][1], xy=(0.03, 0.85), xycoords="axes fraction")
     ax = subfigs[1].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_statistics_ensemble(
         *[sens.acoustic_energy_inst(Y_PRED_LONG[e], N_g) for e in range(n_ensemble)],
@@ -413,6 +424,7 @@ for p_idx, p in enumerate(test_param_list):
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
+    ax.annotate(titles[1][1], xy=(0.03, 0.85), xycoords="axes fraction")
 
     # # Plot ASD
     for i in range(len(plt_idx)):
@@ -432,19 +444,21 @@ for p_idx, p in enumerate(test_param_list):
                 remove_mean=True,
                 periodic=periodic,
             )
-        vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
+        ax.annotate(titles[0][2], xy=(0.03, 0.85), xycoords="axes fraction")
+        vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
             asd_y=AS_PRED[plt_e_idx],
             omega_y=OMEGA_PRED[plt_e_idx],
             asd_y_base=amp_spec,
             omega_y_base=omega,
             range=2,
             xlabel="$\omega$",
-            ylabel=f"$PSD(\{plt_idx[i].name})$",
+            ylabel=f"Amplitude$(\{plt_idx[i].name})$",
             linestyle=[true_ls, pred_ls],
             linewidth=[true_lw, pred_lw],
             color=[true_color, pred_color],
         )
-        plt.legend(["True", "ESN"], loc="upper right")
+        plt.legend(legend_str,
+                   loc="upper right",)
     ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     omega, amp_spec = get_amp_spec(
         network_dt,
@@ -460,25 +474,24 @@ for p_idx, p in enumerate(test_param_list):
             sens.acoustic_energy_inst(Y_PRED_LONG[e_idx], N_g),
             periodic=periodic,
         )
-    vis.plot_asd(  # *[PSD_PRED[e] for e in range(n_ensemble)],
+    vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
         asd_y=AS_PRED[plt_e_idx],
         omega_y=OMEGA_PRED[plt_e_idx],
         asd_y_base=amp_spec,
         omega_y_base=omega,
         range=10,
         xlabel="$\omega$",
-        ylabel="$PSD(E_{ac})$",
+        ylabel="Amplitude$(E_{ac})$",
         linestyle=[true_ls, pred_ls],
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
-    plt.legend(legend_str, loc="upper right")
-    subfigs[0].suptitle(title, x=0.0, y=1.025)
+    ax.annotate(titles[1][2], xy=(0.03, 0.85), xycoords="axes fraction")
     if save_fig:
         if len(test_param_list) == 1:
-            fig.savefig(f"paper/graphics/figure_{fig_name}_v2.png", bbox_inches="tight")
+            fig.savefig(f"graphics/figure_{fig_name}_v5.png", bbox_inches="tight")
         else:
             fig.savefig(
-                f"paper/graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
+                f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
             )
 plt.show()

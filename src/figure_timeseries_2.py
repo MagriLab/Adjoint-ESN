@@ -31,7 +31,7 @@ model_paths = [
         "local_results/rijke/run_20240307_175258"
     ),  # rijke with reservoir, trained on beta = 6,6.5,7,7.5,8
 ]
-legend_str = ["True", "Train $\\beta=1-5$", "Train $\\beta=6-8$"]
+legend_str = ["True", "$\\beta_{\mathrm{train}}=[1,5]$", "$\\beta_{\mathrm{train}}=[6,8]$"]
 data_dir = Path("data")
 
 
@@ -69,47 +69,52 @@ def get_amp_spec(dt, y, remove_mean=True, periodic=False):
     return omega, amp_spec
 
 
-fig_name = "chaotic"
+fig_name = "chaotic2"
 
 if fig_name == "period_double":
     test_param_list = [[7.5, 0.3]]
     periodic = True
-    title = "(a)"
+    titles = [["(a)","(b)","(c)"],
+              ["(d)","(e)","(f)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "quasi":
     test_param_list = [[6.1, 0.2]]
     periodic = False
-    title = "(b)"
+    titles = [["(g)","(h)","(i)"],
+              ["(j)","(k)","(l)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "quasi2":
     test_param_list = [[6.6, 0.22]]
     periodic = False
-    title = "(b)"
+    titles = [["(g)","(h)","(i)"],
+              ["(j)","(k)","(l)"]]
     LT = 1.0
     t_label = "$t$"
     test_loop_times = [20, 2000]
 elif fig_name == "chaotic":
     test_param_list = [[7.6, 0.22]]
     periodic = False
-    title = "(c)"
+    titles = [["(a)","(b)","(c)"],
+              ["(d)","(e)","(f)"]]
     LT = 8.5
     t_label = "$t [LT]$"
     test_loop_times = [4 * LT, 1000 * LT]
 elif fig_name == "chaotic2":
     test_param_list = [[8.7, 0.23]]
     periodic = False
-    title = "(d)"
+    titles = [["(g)","(h)","(i)"],
+              ["(j)","(k)","(l)"]]
     LT = 3.9
     t_label = "$t [LT]$"
     test_loop_times = [4 * LT, 1000 * LT]
 
-n_ensemble = 5
+n_ensemble = 1
 test_loop_names = ["short", "long"]
-figure_size = (15, 5)
+figure_size = (15, 4)
 
 
 # Plotting options
@@ -117,12 +122,17 @@ true_color = "#C7C7C7"  # light grey
 pred_color = "#03BDAB"  # teal
 pred_color2 = "#5D00E6"  # dark purple
 
+# color set 2
+# true_color = "#3CB371"  # green
+# pred_color = "#FEAC16"  # purple
+# pred_color2 = "#926FDB" # orange
+
 true_lw = 5.0
-pred_lw = 3.0
+pred_lw = 2.5
 pred_lw2 = 1.5
 true_ls = "-"
 pred_ls = "-"
-pred_ls2 = "-"
+pred_ls2 = "--"
 
 # DATA creation
 integrator = "odeint"
@@ -292,7 +302,7 @@ for p_idx, p in enumerate(test_param_list):
         N_g=N_g,
         sim_time=test_sim_time,
         sim_dt=sim_dt,
-        data_dir=data_dir,
+        data_dir=data_dir
     )
 
     data = pp.create_dataset(
@@ -343,7 +353,7 @@ for p_idx, p in enumerate(test_param_list):
                 y_pred_long = y_pred_long[1:]
             else:
                 y0 = np.zeros((1, data["long"]["u_washout"].shape[1]))
-                y0[0, 0] = 1
+                y0[0, 0] = 1.0
                 u_washout_auto = np.repeat(y0, [len(data["long"]["u_washout"])], axis=0)
                 transient_steps = pp.get_steps(transient_time, network_dt)
                 # add the transient time that will be discarded later
@@ -385,6 +395,8 @@ for p_idx, p in enumerate(test_param_list):
         #     ax.legend(["True", "ESN"], loc="center", bbox_to_anchor=[0.5, 1.2], ncol=2)
         # if i < len(plt_idx)-1:
         #     ax.set_xticklabels([])
+        ax.annotate(titles[0][0], xy=(0.015, 0.85), xycoords="axes fraction")
+
     ax = subfigs[0].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_lines(
         (data["short"]["t"] - data["short"]["t"][0]) / LT,
@@ -399,6 +411,8 @@ for p_idx, p in enumerate(test_param_list):
         linewidth=[true_lw, pred_lw, pred_lw2],
         color=[true_color, pred_color, pred_color2],
     )
+    ax.annotate(titles[1][0], xy=(0.015, 0.85), xycoords="axes fraction")
+
     # Plot phase plot of the best of ensemble
     # phase_space_steps = pp.get_steps(phase_space_steps_arr[p_idx], network_dt)
 
@@ -430,6 +444,8 @@ for p_idx, p in enumerate(test_param_list):
             linewidth=[true_lw, pred_lw, pred_lw2],
             color=[true_color, pred_color, pred_color2],
         )
+        ax.annotate(titles[0][1], xy=(0.03, 0.85), xycoords="axes fraction")
+
     ax = subfigs[1].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     vis.plot_statistics_ensemble(
         *[
@@ -446,6 +462,7 @@ for p_idx, p in enumerate(test_param_list):
         linewidth=[true_lw, pred_lw, pred_lw2],
         color=[true_color, pred_color, pred_color2],
     )
+    ax.annotate(titles[1][1], xy=(0.03, 0.85), xycoords="axes fraction")
 
     # # Plot ASD
     for i in range(len(plt_idx)):
@@ -466,7 +483,9 @@ for p_idx, p in enumerate(test_param_list):
                     remove_mean=True,
                     periodic=periodic,
                 )
-        vis.plot_asd(  # *[ASD_PRED[e] for e in range(n_ensemble)],
+        ax.annotate(titles[0][2], xy=(0.03, 0.85), xycoords="axes fraction")
+
+        vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
             asd_y=[AS_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
             omega_y=[OMEGA_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
             asd_y_base=amp_spec,
@@ -479,7 +498,10 @@ for p_idx, p in enumerate(test_param_list):
             color=[true_color, pred_color, pred_color2],
             alpha=0.8,
         )
-        # plt.legend(["True", "ESN"], loc="upper right")
+        plt.legend(legend_str,
+                   loc="upper right",
+                   handlelength=1.0,
+                   handletextpad=0.5)
     ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
     omega, amp_spec = get_amp_spec(
         network_dt,
@@ -496,7 +518,7 @@ for p_idx, p in enumerate(test_param_list):
                 sens.acoustic_energy_inst(Y_PRED_LONG[model_idx][e_idx], N_g),
                 periodic=periodic,
             )
-    vis.plot_asd(  # *[PSD_PRED[e] for e in range(n_ensemble)],
+    vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
         asd_y=[AS_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
         omega_y=[OMEGA_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
         asd_y_base=amp_spec,
@@ -509,13 +531,12 @@ for p_idx, p in enumerate(test_param_list):
         color=[true_color, pred_color, pred_color2],
         alpha=0.8,
     )
-    plt.legend(legend_str, loc="upper right")
-    subfigs[0].suptitle(title, x=0.0, y=1.025)
+    ax.annotate(titles[1][2], xy=(0.03, 0.85), xycoords="axes fraction")
     if save_fig:
         if len(test_param_list) == 1:
-            fig.savefig(f"paper/graphics/figure_{fig_name}_v2.png", bbox_inches="tight")
+            fig.savefig(f"graphics/figure_{fig_name}_v5.png", bbox_inches="tight")
         else:
             fig.savefig(
-                f"paper/graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
+                f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight"
             )
 plt.show()
