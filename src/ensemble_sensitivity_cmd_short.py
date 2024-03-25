@@ -28,7 +28,13 @@ def main(args):
     data_dir = Path("data")
 
     n_loops = args.n_loops
-    test_loop_time_arr = np.array(args.loop_times)
+    if args.loop_times[0] > 0:
+        test_loop_time_arr = np.array(args.loop_times)
+    elif args.loop_time_cont[0] > 0:
+        test_loop_time_arr = np.arange(
+            args.loop_time_cont[0], args.loop_time_cont[1], args.loop_time_cont[2]
+        )
+
     n_ensemble = args.n_ensemble_esn
     eta_1_init = args.eta_1_init
 
@@ -407,11 +413,8 @@ def main(args):
                     X_tau = X_tau_1  # reset X_tau
                     print("Loop time:", test_loop_time, flush=True)
                     N_loop = pp.get_steps(test_loop_time, config.model.network_dt)
-                    p_loop = np.vstack(
-                        (
-                            data["loop_0"]["p"][-my_ESN.N_tau - 1 :, :],
-                            data["loop_0"]["p"],
-                        )
+                    p_loop = data["loop_0"]["p"][0] * np.ones(
+                        (N_loop + my_ESN.N_tau + 1, 1)
                     )
                     for loop_idx in range(n_loops):
                         # split the prediction data
@@ -472,7 +475,7 @@ def main(args):
         "tau_list": tau_list,
         "same_washout": args.same_washout,
         "eta_1_init": args.eta_1_init,
-        "loop_times": args.loop_times,
+        "loop_times": test_loop_time_arr,
     }
 
     print(f"Saving results to {model_path}.", flush=True)
@@ -493,7 +496,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_noise_level", type=float, default=0.0)
     parser.add_argument("--n_loops", default=10, type=int)
     parser.add_argument("--n_ensemble_esn", default=1, type=int)
-    parser.add_argument("--loop_times", nargs="+", type=float)
+    parser.add_argument("--loop_times", nargs="+", type=float, default=[-1])
+    parser.add_argument("--loop_time_cont", nargs="+", type=float, default=[-1])
     parser.add_argument("--get_adjoint_of", type=str, default="both")
     parsed_args = parser.parse_args()
     main(parsed_args)
