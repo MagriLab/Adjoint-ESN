@@ -36,6 +36,7 @@ def main(args):
         )
 
     n_ensemble = args.n_ensemble_esn
+    start_time = args.start_time
     eta_1_init = args.eta_1_init
 
     if len(args.beta) == 3:
@@ -174,12 +175,9 @@ def main(args):
     ESN_list = [None] * n_ensemble
     for e_idx in range(n_ensemble):
         # fix the seeds
-        if n_ensemble == 1:
-            input_seeds = [20, 21, 22]
-            reservoir_seeds = [23, 24]
-        else:
-            input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
-            reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
+        input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
+        reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
+
         # expand the ESN dict with the fixed seeds
         ESN_dict["input_seeds"] = input_seeds
         ESN_dict["reservoir_seeds"] = reservoir_seeds
@@ -248,7 +246,7 @@ def main(args):
         print("Regime:", regime_str)
 
         test_sim_time = (
-            max(test_loop_time_arr) + test_transient_time + test_washout_time
+            start_time + max(test_loop_time_arr) + test_transient_time + test_washout_time
         )
         test_loop_times = [max(test_loop_time_arr)]
 
@@ -272,6 +270,8 @@ def main(args):
             y_init=y0_sim,
         )
 
+        start_idx = pp.get_steps(start_time, network_dt)
+
         data = pp.create_dataset(
             y_sim,
             t_sim,
@@ -286,6 +286,7 @@ def main(args):
             N_g=N_g,
             u_f_order=u_f_order,
             tau=p_sim["tau"],
+            start_idxs=[start_idx]
         )
 
         my_rijke = Rijke(
@@ -305,7 +306,8 @@ def main(args):
                 print("Loop time:", test_loop_time)
                 N_transient_ = pp.get_steps(test_transient_time, sim_dt)
                 N_washout_ = pp.get_steps(test_washout_time, sim_dt)
-                y_init_prev = y_sim[N_transient_ + N_washout_]
+                N_start_ = pp.get_steps(start_time, sim_dt)
+                y_init_prev = y_sim[N_transient_ + N_washout_ + N_start_]
                 for loop_idx in range(n_loops):
                     y_bar, t_bar = pp.load_data(
                         beta=p_sim["beta"],
@@ -498,6 +500,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_ensemble_esn", default=1, type=int)
     parser.add_argument("--loop_times", nargs="+", type=float, default=[-1])
     parser.add_argument("--loop_time_cont", nargs="+", type=float, default=[-1])
+    parser.add_argument("--start_time", type=float, default=0.0)
     parser.add_argument("--get_adjoint_of", type=str, default="both")
     parsed_args = parser.parse_args()
     main(parsed_args)
