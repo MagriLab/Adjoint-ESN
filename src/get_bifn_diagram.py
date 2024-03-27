@@ -33,7 +33,7 @@ def main(args):
 
     data_dir = Path("data")
 
-    n_ensemble = 1
+    n_ensemble = args.n_ensemble
     test_loop_times = [1000]
     test_loop_names = ["long"]
 
@@ -179,14 +179,9 @@ def main(args):
         # generate and train ESN realisations
         for e_idx in range(n_ensemble):
             # fix the seeds
-            if n_ensemble == 1:
-                input_seeds = [20, 21, 22]
-                reservoir_seeds = [23, 24]
-                plt_e_idx = 0
-            else:
-                input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
-                reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
-                plt_e_idx = 4
+            input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
+            reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
+            
             # expand the ESN dict with the fixed seeds
             ESN_dict["input_seeds"] = input_seeds
             ESN_dict["reservoir_seeds"] = reservoir_seeds
@@ -350,5 +345,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--beta", nargs="+", type=float)
     parser.add_argument("--tau", nargs="+", type=float)
+    parser.add_argument("--n_ensemble", type=int)
     parsed_args = parser.parse_args()
     main(parsed_args)
