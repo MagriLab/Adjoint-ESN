@@ -27,21 +27,15 @@ figure_size = (15, 4)
 save_fig = True
 same_washout = False
 
-# model_path = Path(
-#     "local_results/rijke/run_20231029_153121"
-# )  # rijke with reservoir, trained on beta = 1,2,3,4,5
-# model_path = Path(
-#     "local_results/rijke/run_20231029_153121"
-# )  # rijke with reservoir, trained on beta = 1,2,3,4,5
+model_path = Path(
+    "local_results/rijke/run_20231029_153121"
+)  # rijke with reservoir, trained on beta = 1,2,3,4,5
 
 # model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
 
-model_path = Path(
-    "local_results/rijke/run_20240307_175258"
-)  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
-model_path = Path(
-    "local_results/rijke/run_20240307_175258"
-)  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+# model_path = Path(
+#     "local_results/rijke/run_20240307_175258"
+# )  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
 
 legend_str = ["True", "ESN"]
 data_dir = Path("data")
@@ -81,8 +75,7 @@ def get_amp_spec(dt, y, remove_mean=True, periodic=False):
     return omega, amp_spec
 
 
-fig_name = "chaotic2"
-fig_name = "chaotic2"
+fig_name = "chaotic"
 
 if fig_name == "lco1":
     test_param_list = [[2.0, 0.25]]
@@ -93,25 +86,29 @@ elif fig_name == "lco2":
     periodic = True
     titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
 
-n_ensemble = 1
+n_ensemble = 5
 test_loop_names = ["short", "long"]
-test_loop_times = [20, 2000]
+test_loop_times = [20, 100]
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
 # color set 1
-true_color = "#C7C7C7"  # light grey
-# pred_color = "#03BDAB"  # teal
-pred_color = "#5D00E6"  # dark purple
+# true_color = "#C7C7C7"  # light grey
+# # pred_color = "#03BDAB"  # teal
+# pred_color = "#5D00E6"  # dark purple
 
 # color set 2
 # true_color = "#3CB371"  # green
 # # pred_color = "#FEAC16"  # purple
 # pred_color = "#926FDB" # orange
 
+true_color = "#03BDAB" # teal
+pred_color = "#FEAC16"  # orange 
+pred_color = "#5D00E6"  # dark purple
+
 true_lw = 5.0
-pred_lw = 1.5
-pred_lw = 1.5
+pred_lw = 2.0
+
 true_ls = "-"
 pred_ls = "--"
 
@@ -236,14 +233,8 @@ print(ESN_dict)
 ESN_list = [None] * n_ensemble
 for e_idx in range(n_ensemble):
     # fix the seeds
-    if n_ensemble == 1:
-        input_seeds = [20, 21, 22]
-        reservoir_seeds = [23, 24]
-        plt_e_idx = 0
-    else:
-        input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
-        reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
-        plt_e_idx = 4
+    input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
+    reservoir_seeds = [5 * e_idx + 3, 5 * e_idx + 4]
 
     # expand the ESN dict with the fixed seeds
     ESN_dict["input_seeds"] = input_seeds
@@ -353,6 +344,8 @@ for p_idx, p in enumerate(test_param_list):
         [errors.rel_L2(data["short"]["y"], Y_PRED_SHORT[i]) for i in range(n_ensemble)]
     )
     print("Short term prediction errors: ", pred_short_error)
+    plt_e_idx = np.argmin(pred_short_error)
+    print("Best idx: ", plt_e_idx)
 
     ac_pred_short_error = np.array(
         [
@@ -499,7 +492,7 @@ for p_idx, p in enumerate(test_param_list):
     ax.annotate(titles[1][2], xy=(0.03, 0.85), xycoords="axes fraction")
     if save_fig:
         if len(test_param_list) == 1:
-            fig.savefig(f"graphics/figure_{fig_name}_v5.png", bbox_inches="tight")
+            fig.savefig(f"graphics/figure_{fig_name}_try.png", bbox_inches="tight")
         else:
             fig.savefig(f"graphics/figure_{fig_name}_{p_idx}.png", bbox_inches="tight")
 plt.show()
