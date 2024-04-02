@@ -57,7 +57,7 @@ def main(args):
     )
 
     # Initial conditions
-    y0 = np.zeros(rjk.N_dim + 1)
+    y0 = np.zeros(rjk.N_dim)
     if args.seed is not None:
         rand = np.random.RandomState(seed=args.seed)
         y0[0 : rjk.N_dim] = rand.rand(rjk.N_dim)

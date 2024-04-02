@@ -7,26 +7,27 @@ sys.path.append(root)
 
 import argparse
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import rc
 
 import adjoint_esn.rijke_galerkin.sensitivity as sens
 import adjoint_esn.utils.postprocessing as post
-import adjoint_esn.utils.visualizations as vis
 from adjoint_esn.rijke_galerkin.solver import Rijke
-from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam, get_eVar
 
 
 def main(args):
-    model_path = Path(f"local_results/rijke/run_{args.run_name}")
-    data_dir = Path("data")
+    # load model
+    model_path = Path(args.model_dir) / f"run_{args.run_name}"
+    config = post.load_config(model_path)
+    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
+    # set data directory
+    data_dir = Path(args.data_dir)
+
+    # set the number of loops and loop times
     n_loops = args.n_loops
     if args.loop_times[0] > 0:
         test_loop_time_arr = np.array(args.loop_times)
@@ -35,10 +36,12 @@ def main(args):
             args.loop_time_cont[0], args.loop_time_cont[1], args.loop_time_cont[2]
         )
 
+    # options
     n_ensemble = args.n_ensemble_esn
     start_time = args.start_time
     eta_1_init = args.eta_1_init
 
+    # make a list of test parameters
     if len(args.beta) == 3:
         beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
     elif len(args.beta) == 1:
@@ -48,11 +51,7 @@ def main(args):
         tau_list = np.arange(args.tau[0], args.tau[1], args.tau[2])
     elif len(args.tau) == 1:
         tau_list = [args.tau[0]]
-
     p_list = pp.make_param_mesh([beta_list, tau_list])
-
-    config = post.load_config(model_path)
-    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
     # DATA creation
     integrator = "odeint"
@@ -70,10 +69,7 @@ def main(args):
 
     transient_time = config.simulation.transient_time
 
-    if args.train_noise_level >= 0.0:
-        noise_level = args.train_noise_level
-    else:
-        noise_level = config.simulation.noise_level
+    noise_level = config.simulation.noise_level
 
     random_seed = config.random_seed
 
@@ -226,13 +222,7 @@ def main(args):
     }
 
     test_transient_time = config.simulation.transient_time
-    # when running with same_washout=True, loops start after the washout
-    # when running with same_washout=False, loops start after the transient
-    # that's why the initial condition of the first loop changes
-    if args.same_washout:
-        test_washout_time = config.model.washout_time
-    else:
-        test_washout_time = 0
+    test_washout_time = config.model.washout_time
 
     # add fast jacobian condition
     if config.model.input_only_mode == False and config.model.r2_mode == False:
@@ -246,7 +236,10 @@ def main(args):
         print("Regime:", regime_str)
 
         test_sim_time = (
-            start_time + max(test_loop_time_arr) + test_transient_time + test_washout_time
+            start_time
+            + max(test_loop_time_arr)
+            + test_transient_time
+            + test_washout_time
         )
         test_loop_times = [max(test_loop_time_arr)]
 
@@ -286,7 +279,7 @@ def main(args):
             N_g=N_g,
             u_f_order=u_f_order,
             tau=p_sim["tau"],
-            start_idxs=[start_idx]
+            start_idxs=[start_idx],
         )
 
         my_rijke = Rijke(
@@ -387,9 +380,6 @@ def main(args):
                     X_pred, Y_pred = my_ESN.closed_loop(X_tau_1, N_t=N, P=P_new)
                 else:
                     # let evolve for a longer time and then remove washout
-                    N_transient_test = pp.get_steps(
-                        test_transient_time, config.model.network_dt
-                    )
                     N_washout = pp.get_steps(
                         config.model.washout_time, config.model.network_dt
                     )
@@ -478,6 +468,7 @@ def main(args):
         "same_washout": args.same_washout,
         "eta_1_init": args.eta_1_init,
         "loop_times": test_loop_time_arr,
+        "start_time": start_time,
     }
 
     print(f"Saving results to {model_path}.", flush=True)
@@ -490,12 +481,13 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model_dir", type=str)
     parser.add_argument("--run_name", type=str)
+    parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--beta", nargs="+", type=float)
     parser.add_argument("--tau", nargs="+", type=float)
     parser.add_argument("--same_washout", default=False, action="store_true")
     parser.add_argument("--eta_1_init", default=1.0, type=float)
-    parser.add_argument("--train_noise_level", type=float, default=0.0)
     parser.add_argument("--n_loops", default=10, type=int)
     parser.add_argument("--n_ensemble_esn", default=1, type=int)
     parser.add_argument("--loop_times", nargs="+", type=float, default=[-1])

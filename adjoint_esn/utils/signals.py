@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.signal as signal
 
+from adjoint_esn.utils import preprocessing as pp
+
 
 def xcorr(x, y, dt, scale="none"):
     """Obtain cross-correlation of signals x and y
@@ -113,6 +115,35 @@ def amplitude_spectrum(x, dt):
         omega = omega[0 : int(N / 2) + 1]
         omega[-1] = -omega[-1]  # change from -pi to pi
     return omega, A
+
+
+def get_amp_spec(dt, y, remove_mean=True, periodic=False):
+    # remove mean
+    if remove_mean == True:
+        y = y - np.mean(y)
+    if periodic:
+        T_period = period(y, dt)
+        data_omega = 2 * np.pi / T_period
+        print("Omega = ", data_omega)
+        print("Period = ", T_period)
+        # take the maximum number of periods
+        # the real period isn't an exact multiple of the sampling time
+        # therefore, the signal doesn't repeat itself at exact integer indices
+        # so calculating the number of time steps in each period
+        # does not work in order to cut the signal at the maximum number of periods
+        # that's why we will cut between peaks, which is a more reliable option
+        # though still not exact
+        min_dist = pp.get_steps(T_period - 0.1, dt)
+        (start_pk_idx, end_pk_idx) = periodic_signal_peaks(y, T=min_dist)
+        y_pre_fft = y[
+            start_pk_idx:end_pk_idx
+        ]  # don't include end peak for continuous signal
+    else:
+        y_pre_fft = y
+
+    # find asd
+    omega, amp_spec = amplitude_spectrum(y_pre_fft, dt)
+    return omega, amp_spec
 
 
 def power_spectral_density(x, dt):

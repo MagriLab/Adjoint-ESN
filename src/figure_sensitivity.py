@@ -14,12 +14,14 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
+from adjoint_esn.utils import custom_colormap as cm
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam
 
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
-rc("text", usetex=True)
-save_fig = True
+plt.style.use("src/stylesheet.mplstyle")
+cmap = cm.create_custom_colormap(type="discrete")
+
+save_fig = False
 fig_name = "sensitivity"
 # N_reservoir = 1200, connectivity = 20
 model_path = Path("local_results/rijke/run_20231029_153121")
@@ -57,11 +59,10 @@ save_paths_tau = [
     "20231218_193704",  # beta = 4.5
 ]
 
-true_color = "#C7C7C7"  # light grey
-# pred_color = "#03BDAB"  # teal
-pred_color = "#5D00E6"  # dark purple
+true_color = cmap(0)
+pred_color = cmap(2)
 
-true_lw = 6.0
+true_lw = 5.0
 pred_lw = 2.0
 true_ls = "-"
 pred_ls = "--"
@@ -157,5 +158,5 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         ax.grid(visible=True)
 
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}_v2.png", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_{fig_name}_v6.png", bbox_inches="tight")
 plt.show()

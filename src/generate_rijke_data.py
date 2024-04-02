@@ -33,6 +33,7 @@ class GenerateArgs:
     tau: float
     heat_law: str
     damping: str
+    integrator: str
 
 
 def run_sim(params):
@@ -50,7 +51,7 @@ def run_sim(params):
         "dx": None,
         "N_x": None,
         "dt": 1e-3,
-        "simulation_time": 2200,
+        "simulation_time": 1200,
         "transient_time": 200,
         "seed": None,
         "N_g": 4,
@@ -62,14 +63,15 @@ def run_sim(params):
         "tau": tau,
         "heat_law": "kings_poly",
         "damping": "modal",
+        "integrator": "odeint",
     }
     args = GenerateArgs(**args_dict)
     generator(args)
 
 
 def main():
-    beta_list = np.arange(5.80, 7.31, 0.01)
-    tau_list = np.array([0.2])
+    beta_list = np.array([7.6])
+    tau_list = np.array([0.22])
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     print(mp.cpu_count())

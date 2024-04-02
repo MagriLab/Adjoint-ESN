@@ -18,33 +18,40 @@ from adjoint_esn.utils.enums import eParam
 
 
 def main(args):
-    # options
-    test_time = 200
-    test_loop_time = 20
-    n_folds = 5
-    seed = 0  # random seed for fold start idxs
+    """Make predictions on random folds and save the error for an ensemble of ESNs"""
+    # load model
+    model_path = Path(args.model_dir) / f"run_{args.run_name}"
+    config = post.load_config(model_path)
+    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
-    beta_list = np.arange(0.5,7.5,0.25)
-    tau_list = np.arange(0.05, 0.35, 0.01)
+    # set data directory
+    data_dir = Path(args.data_dir)
 
-    # create an ensemble of ESNs to make predictions
-    n_ensemble = 5
+    # options for testing
+    test_time = args.test_time  # total test window
+    fold_time = args.fold_time  # individual fold time
+    n_folds = args.n_folds  # number of folds
+    fold_seed = args.fold_seed  # random seed for fold start idxs
+
+    # number of ensemble of ESNs to make predictions
+    n_ensemble = args.n_ensemble_esn
 
     # make a list of test parameters
+    if len(args.beta) == 3:
+        beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
+    elif len(args.beta) == 1:
+        beta_list = [args.beta[0]]
+    if len(args.tau) == 3:
+        tau_list = np.arange(args.tau[0], args.tau[1], args.tau[2])
+    elif len(args.tau) == 1:
+        tau_list = [args.tau[0]]
     test_param_list = pp.make_param_mesh([beta_list, tau_list])
 
     # error measure
     error_measure = errors.rel_L2
 
-    # load experiment config and results
-    experiment_path = Path(args.experiment_path)
-    config = post.load_config(experiment_path)
-    results = pp.unpickle_file(experiment_path / "results.pickle")[0]
-
-    # load the data for training
-    data_dir = Path(args.data_dir)
-
     # DATA creation
+    # options for data creation
     integrator = "odeint"
 
     # number of galerkin modes
@@ -84,10 +91,10 @@ def main(args):
 
     # length of training time series
     train_time = config.train.time
-
     loop_names = ["train"]
     loop_times = [train_time]
 
+    # create or load training data
     print("Loading training data.")
     DATA = {}
     for loop_name in loop_names:
@@ -129,6 +136,7 @@ def main(args):
             u_f_order=u_f_order,
             noise_level=noise_level,
             random_seed=random_seed,
+            tau=p_sim["tau"],
         )
 
         for loop_name in loop_names:
@@ -139,29 +147,14 @@ def main(args):
 
     # dimension of the inputs
     dim = DATA["train"]["u"][0].shape[1]
-    N_train = DATA["train"]["u"][0].shape[0]
-    test_sim_time = transient_time + train_time + washout_time + test_time
 
-    N_test = pp.get_steps(test_time, network_dt)
-    N_washout = pp.get_steps(washout_time, network_dt)
-    N_test_loop = pp.get_steps(test_loop_time, network_dt)
-
-    rnd = np.random.RandomState(seed=seed)
-    start_idxs = (
-        N_train
-        + N_washout
-        + rnd.randint(low=0, high=N_test - (N_washout + N_test_loop), size=(n_folds,))
-    )
-    test_loop_times = [test_loop_time] * n_folds
-
-    print("Loading model.")
     # get the properties of the best ESN from the results
     (
         ESN_dict,
         hyp_param_names,
         hyp_param_scales,
         hyp_params,
-    ) = post.get_ESN_properties_from_results(config, results, dim, top_idx=args.top_idx)
+    ) = post.get_ESN_properties_from_results(config, results, dim)
     ESN_dict["verbose"] = False
     print(ESN_dict)
     [
@@ -169,8 +162,8 @@ def main(args):
         for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
     ]
 
-    # create matrix to save error
-    error_mat = np.zeros((len(test_param_list), n_folds, n_ensemble))
+    # generate and train ESN realisations
+    ESN_list = [None] * n_ensemble
     for e_idx in range(n_ensemble):
         # fix the seeds
         input_seeds = [5 * e_idx, 5 * e_idx + 1, 5 * e_idx + 2]
@@ -181,7 +174,7 @@ def main(args):
         ESN_dict["reservoir_seeds"] = reservoir_seeds
 
         # create an ESN
-        print(f"Creating ESN {e_idx+1}/{n_ensemble}.")
+        print(f"Creating ESN {e_idx+1}/{n_ensemble}.", flush=True)
         my_ESN = post.create_ESN(
             ESN_dict, config.model.type, hyp_param_names, hyp_param_scales, hyp_params
         )
@@ -194,37 +187,61 @@ def main(args):
             P_train=DATA["train"]["p"],
             train_idx_list=train_idx_list,
         )
+        ESN_list[e_idx] = my_ESN
 
-        for p_idx, p in enumerate(test_param_list):
-            p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
-            regime_str = f'beta = {p_sim["beta"]}, tau = {p_sim["tau"]},'
-            print(f"Testing ESN on {regime_str}")
-            y_sim, t_sim = pp.load_data(
-                beta=p_sim["beta"],
-                tau=p_sim["tau"],
-                x_f=0.2,
-                N_g=N_g,
-                sim_time=test_sim_time,
-                sim_dt=sim_dt,
-                data_dir=data_dir,
-            )
+    # set test time and steps
+    test_sim_time = transient_time + train_time + washout_time + test_time
 
-            data = pp.create_dataset(
-                y_sim,
-                t_sim,
-                p_sim,
-                network_dt=network_dt,
-                transient_time=transient_time,
-                washout_time=washout_time,
-                loop_times=test_loop_times,
-                input_vars=input_vars,
-                output_vars=output_vars,
-                param_vars=param_vars,
-                N_g=N_g,
-                u_f_order=u_f_order,
-                start_idxs=start_idxs,
-            )
+    N_train = DATA["train"]["u"][0].shape[0]
+    N_test = pp.get_steps(test_time, network_dt)
+    N_washout = pp.get_steps(washout_time, network_dt)
+    N_fold = pp.get_steps(fold_time, network_dt)
 
+    # get the starting indices for the folds
+    # start from after the training time
+    rnd = np.random.RandomState(seed=fold_seed)
+    start_idxs = (
+        N_train
+        + N_washout
+        + rnd.randint(low=0, high=N_test - (N_washout + N_fold), size=(n_folds,))
+    )
+    fold_times = [fold_time] * n_folds
+
+    # create matrix to save error
+    error_mat = np.zeros((len(test_param_list), n_folds, n_ensemble))
+    for p_idx, p in enumerate(test_param_list):
+        p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
+        regime_str = f'beta = {p_sim["beta"]}, tau = {p_sim["tau"]},'
+
+        y_sim, t_sim = pp.load_data(
+            beta=p_sim["beta"],
+            tau=p_sim["tau"],
+            x_f=0.2,
+            N_g=N_g,
+            sim_time=test_sim_time,
+            sim_dt=sim_dt,
+            data_dir=data_dir,
+        )
+
+        data = pp.create_dataset(
+            y_sim,
+            t_sim,
+            p_sim,
+            network_dt=network_dt,
+            transient_time=transient_time,
+            washout_time=washout_time,
+            loop_times=fold_times,
+            input_vars=input_vars,
+            output_vars=output_vars,
+            param_vars=param_vars,
+            N_g=N_g,
+            u_f_order=u_f_order,
+            tau=p_sim["tau"],
+            start_idxs=start_idxs,
+        )
+        for e_idx in range(n_ensemble):
+            print(f"Testing ESN {e_idx+1}/{n_ensemble} on {regime_str}")
+            my_ESN = ESN_list[e_idx]
             if hasattr(my_ESN, "tau"):
                 my_ESN.tau = p_sim["tau"]
             for loop_idx, loop_name in enumerate(data.keys()):
@@ -235,31 +252,38 @@ def main(args):
                     P=data[loop_name]["p"],
                 )
                 y_pred = y_pred[1:]
-                error = error_measure(data[loop_name]["y"][:,:2*N_g], y_pred[:,:2*N_g]) # do this propery with the enums
-                print(f"Loop {loop_name} error: {error}")
+                error = error_measure(
+                    data[loop_name]["y"][:, : 2 * N_g], y_pred[:, : 2 * N_g]
+                )
+                print(f"Loop {loop_name[-1]} error: {error}")
                 error_mat[p_idx, loop_idx, e_idx] = error
 
     error_results = {
         "error": error_mat,
-        "test_time": test_time,
-        "fold_time": test_loop_time,
-        "seed": seed,
-        "test_parameters": test_param_list,
         "beta_list": beta_list,
         "tau_list": tau_list,
-        "top_idx": args.top_idx
+        "test_time": test_time,
+        "fold_time": fold_time,
+        "fold_seed": fold_seed,
     }
 
-    print(f"Saving results to {experiment_path}.", flush=True)
+    print(f"Saving results to {model_path}.", flush=True)
     now = datetime.now()
     dt_string = now.strftime("%Y%m%d_%H%M%S")
-    pp.pickle_file(experiment_path / f"error_results_{dt_string}.pickle", error_results)
+    pp.pickle_file(model_path / f"error_results_{dt_string}.pickle", error_results)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment_path", type=str)
-    parser.add_argument("--data_dir", type=str, default="data")
-    parser.add_argument("--top_idx",type=int,default=0)
+    parser.add_argument("--model_dir", type=str)
+    parser.add_argument("--run_name", type=str)
+    parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--beta", nargs="+", type=float)
+    parser.add_argument("--tau", nargs="+", type=float)
+    parser.add_argument("--test_time", type=float, default=200)
+    parser.add_argument("--fold_time", type=float, default=10)
+    parser.add_argument("--n_folds", type=int, default=5)
+    parser.add_argument("--fold_seed", type=int, default=0)
+    parser.add_argument("--n_ensemble_esn", type=int, default=5)
     parsed_args = parser.parse_args()
     main(parsed_args)

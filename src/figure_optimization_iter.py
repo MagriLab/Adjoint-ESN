@@ -14,47 +14,15 @@ from matplotlib import rc
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
 from adjoint_esn.rijke_galerkin import sensitivity as sens
+from adjoint_esn.utils import custom_colormap as cm
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils import signals
 from adjoint_esn.utils.enums import eParam, get_eVar
 
+plt.style.use("src/stylesheet.mplstyle")
+cmap = cm.create_custom_colormap(type="discrete")
 
-def get_asd(dt, y, remove_mean=True, periodic=False):
-    # remove mean
-    if remove_mean == True:
-        y = y - np.mean(y)
-    if periodic:
-        T_period = signals.period(y, dt)
-        data_omega = 2 * np.pi / T_period
-        print("Omega = ", data_omega)
-        print("Period = ", T_period)
-        # take the maximum number of periods
-        # the real period isn't an exact multiple of the sampling time
-        # therefore, the signal doesn't repeat itself at exact integer indices
-        # so calculating the number of time steps in each period
-        # does not work in order to cut the signal at the maximum number of periods
-        # that's why we will cut between peaks, which is a more reliable option
-        # though still not exact
-        min_dist = pp.get_steps(T_period - 0.1, dt)
-        (start_pk_idx, end_pk_idx) = signals.periodic_signal_peaks(y, T=min_dist)
-        y_pre_fft = y[
-            start_pk_idx:end_pk_idx
-        ]  # don't include end peak for continuous signal
-    else:
-        y_pre_fft = y
-
-    # find asd
-    omega, asd = signals.amplitude_spectrum(y_pre_fft, dt)
-
-    # to get the harmonic frequency from the asd
-    # asd_peaks = find_peaks(asd, threshold=0.1)[0]
-    # harmonic_freq = omega[asd_peaks][0]
-    return omega, asd
-
-
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
-rc("text", usetex=True)
-save_fig = True
+save_fig = False
 model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
 optimization_path = "20231129_180629"
 
@@ -88,10 +56,10 @@ iter_idx = [int(i) for i in np.arange(len(p_hist))]
 iter_idx = [0, 2, 4, 8]
 p_hist = p_hist[iter_idx]
 
-true_color = "silver"
-pred_color = "tab:red"
-true_lw = 6.0
-pred_lw = 2.0
+true_color = cmap(0)
+pred_color = cmap(2)
+true_lw = 5.0
+pred_lw = 2.5
 true_ls = "-"
 pred_ls = "--"
 
@@ -186,6 +154,7 @@ for p_idx, p in enumerate(train_param_list):
         u_f_order=u_f_order,
         noise_level=noise_level,
         random_seed=random_seed,
+        tau=p_sim["tau"],
     )
 
     for loop_name in loop_names:
@@ -231,7 +200,8 @@ my_ESN.train(
     P_train=DATA["train"]["p"],
     train_idx_list=train_idx_list,
 )
-titles = ["(a)", "(b)", "(c)", "(d)"]
+titles = [f"({chr(i)})" for i in range(ord("a"), ord("z") + 1)]
+tt = 0
 transient_time = 200
 # Predict on the test dataset
 for p_idx, p in enumerate(p_hist):
@@ -273,6 +243,7 @@ for p_idx, p in enumerate(p_hist):
         N_g=N_g,
         u_f_order=u_f_order,
         start_idxs=[0, 0],
+        tau=p_sim["tau"],
     )
 
     print("Predicting.")
@@ -321,6 +292,8 @@ for p_idx, p in enumerate(p_hist):
     )
     ax1.set_xlim([-7.5, 7.5])
     ax1.set_ylim([-7.5, 7.5])
+    ax1.annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+    tt += 1
 
     # Plot short term prediction
     ax2 = subfigs[1].add_subplot(1, 1, 1)
@@ -337,16 +310,18 @@ for p_idx, p in enumerate(p_hist):
     # plt.hlines(y = np.mean(sens.acoustic_energy_inst(data["short"]["y"], N_g)), xmin = 0, xmax = 20, color = 'tab:blue')
     # plt.hlines(y = np.mean( sens.acoustic_energy_inst(y_pred_short, N_g)), xmin = 0, xmax = 20, color = 'tab:orange', linestyle="--")
     ax2.set_ylim([0, 35.0])
+    ax2.annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+    tt += 1
 
     # Plot power spectral density
     ax3 = subfigs[2].add_subplot(1, 1, 1)
-    omega, asd = get_asd(
+    omega, asd = signals.get_amp_spec(
         network_dt,
         sens.acoustic_energy_inst(data["long"]["y"], N_g),
         remove_mean=True,
         periodic=True,
     )
-    omega_pred, asd_pred = get_asd(
+    omega_pred, asd_pred = signals.get_amp_spec(
         network_dt,
         sens.acoustic_energy_inst(y_pred_long, N_g),
         remove_mean=True,
@@ -365,7 +340,9 @@ for p_idx, p in enumerate(p_hist):
         color=[true_color, pred_color],
     )
     ax3.legend(["True", "ESN"], loc="upper right")
-    subfigs[0].suptitle(titles[p_idx], x=0.0, y=1.025)
+    ax3.annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+    tt += 1
+
     if save_fig:
         fig.savefig(
             f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.png",

@@ -14,20 +14,23 @@ from matplotlib import rc
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
 from adjoint_esn.rijke_galerkin import sensitivity as sens
+from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils import signals
 from adjoint_esn.utils.enums import eParam, get_eVar
-from adjoint_esn.utils import errors
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 14})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 same_washout = False
 
 model_paths = [
+    # Path(
+    #     "local_results/rijke/run_20231029_153121"
+    # ),  # rijke with reservoir, trained on beta = 1,2,3,4,5
     Path(
-        "local_results/rijke/run_20231029_153121"
-    ),  # rijke with reservoir, trained on beta = 1,2,3,4,5
+        "local_results/rijke/run_20240307_175258"
+    ),  # rijke with reservoir, trained on beta = 6,6.5,7,7.5,8
     Path(
         "local_results/rijke/run_20240307_175258"
     ),  # rijke with reservoir, trained on beta = 6,6.5,7,7.5,8
@@ -74,7 +77,7 @@ def get_amp_spec(dt, y, remove_mean=True, periodic=False):
     return omega, amp_spec
 
 
-fig_name = "quasi2"
+fig_name = "chaotic"
 
 if fig_name == "period_double":
     test_param_list = [[7.5, 0.3]]
@@ -124,11 +127,11 @@ figure_size = (15, 4)
 
 # color set 2
 # true_color = "#3CB371"  # green
-# pred_color = "#FEAC16"  # orange 
+# pred_color = "#FEAC16"  # orange
 # pred_color2 = "#926FDB" # purple
 
-true_color = "#03BDAB" # teal
-pred_color = "#FEAC16"  # orange 
+true_color = "#03BDAB"  # teal
+pred_color = "#FEAC16"  # orange
 pred_color2 = "#5D00E6"  # dark purple
 
 true_lw = 5.0
@@ -372,16 +375,19 @@ for p_idx, p in enumerate(test_param_list):
                 y_pred_long = y_pred_long[transient_steps:, :]
 
             Y_PRED_LONG[model_idx][e_idx] = y_pred_long
-        
+
         pred_short_error = np.array(
-            [errors.rel_L2(data["short"]["y"], Y_PRED_SHORT[model_idx][i]) for i in range(n_ensemble)]
+            [
+                errors.rel_L2(data["short"]["y"], Y_PRED_SHORT[model_idx][i])
+                for i in range(n_ensemble)
+            ]
         )
         print("Short term prediction errors: ", pred_short_error)
         plt_e_idx[model_idx] = np.argmin(pred_short_error)
         print("Best idx: ", plt_e_idx[model_idx])
     # SHORT-TERM AND TIME-ACCURATE PREDICTION
     # Plot short term prediction timeseries of the best of ensemble
-    
+
     for i in range(len(plt_idx)):
         ax = subfigs[0].add_subplot(len(plt_idx) + 1, 1, i + 1)
         vis.plot_lines(
@@ -408,7 +414,9 @@ for p_idx, p in enumerate(test_param_list):
         (data["short"]["t"] - data["short"]["t"][0]) / LT,
         sens.acoustic_energy_inst(data["short"]["y"], N_g),
         *[
-            sens.acoustic_energy_inst(Y_PRED_SHORT[model_idx][plt_e_idx[model_idx]], N_g)
+            sens.acoustic_energy_inst(
+                Y_PRED_SHORT[model_idx][plt_e_idx[model_idx]], N_g
+            )
             for model_idx in range(n_models)
         ],
         xlabel=t_label,
@@ -492,8 +500,14 @@ for p_idx, p in enumerate(test_param_list):
         ax.annotate(titles[0][2], xy=(0.03, 0.85), xycoords="axes fraction")
 
         vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
-            asd_y=[AS_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)],
-            omega_y=[OMEGA_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)],
+            asd_y=[
+                AS_PRED[model_idx][plt_e_idx[model_idx]]
+                for model_idx in range(n_models)
+            ],
+            omega_y=[
+                OMEGA_PRED[model_idx][plt_e_idx[model_idx]]
+                for model_idx in range(n_models)
+            ],
             asd_y_base=amp_spec,
             omega_y_base=omega,
             range=2.5,
@@ -522,8 +536,12 @@ for p_idx, p in enumerate(test_param_list):
                 periodic=periodic,
             )
     vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
-        asd_y=[AS_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)],
-        omega_y=[OMEGA_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)],
+        asd_y=[
+            AS_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)
+        ],
+        omega_y=[
+            OMEGA_PRED[model_idx][plt_e_idx[model_idx]] for model_idx in range(n_models)
+        ],
         asd_y_base=amp_spec,
         omega_y_base=omega,
         range=10,

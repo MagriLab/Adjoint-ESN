@@ -24,18 +24,18 @@ rc("text", usetex=True)
 rc("grid", alpha=0.6)
 figure_size = (15, 4)
 
-save_fig = True
+save_fig = False
 same_washout = False
 
-model_path = Path(
-    "local_results/rijke/run_20231029_153121"
-)  # rijke with reservoir, trained on beta = 1,2,3,4,5
+# model_path = Path(
+#     "local_results/rijke/run_20231029_153121"
+# )  # rijke with reservoir, trained on beta = 1,2,3,4,5
 
 # model_path = Path("local_results/rijke/run_20231129_120552")  # rijke with reservoir, trained on beta = 1,3,5,7,9
 
-# model_path = Path(
-#     "local_results/rijke/run_20240307_175258"
-# )  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
+model_path = Path(
+    "local_results/rijke/run_20240307_175258"
+)  # rijke with reservoir, trained on beta = 6,6.5,7.0,7.5,8.0
 
 legend_str = ["True", "ESN"]
 data_dir = Path("data")
@@ -85,6 +85,10 @@ elif fig_name == "lco2":
     test_param_list = [[4.5, 0.12]]
     periodic = True
     titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+elif fig_name == "chaotic":
+    test_param_list = [[7.6, 0.22]]
+    periodic = False
+    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
 
 n_ensemble = 5
 test_loop_names = ["short", "long"]
@@ -102,8 +106,8 @@ results = pp.unpickle_file(model_path / "results.pickle")[0]
 # # pred_color = "#FEAC16"  # purple
 # pred_color = "#926FDB" # orange
 
-true_color = "#03BDAB" # teal
-pred_color = "#FEAC16"  # orange 
+true_color = "#03BDAB"  # teal
+pred_color = "#FEAC16"  # orange
 pred_color = "#5D00E6"  # dark purple
 
 true_lw = 5.0

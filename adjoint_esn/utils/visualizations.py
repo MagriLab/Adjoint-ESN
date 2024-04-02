@@ -117,6 +117,7 @@ def plot_statistics_ensemble(
     *y,
     y_base,
     orientation="var_on_x",
+    n_bins=100,
     xlabel=None,
     ylabel=None,
     legend=None,
@@ -124,18 +125,17 @@ def plot_statistics_ensemble(
     **line_specs,
 ):
     # Histogram option
-    n_bins = 100
-
     density_base = stats.gaussian_kde(y_base)
-    _, x = np.histogram(y_base, n_bins, density=True)
+    x_base = np.linspace(np.min(y_base), np.max(y_base), n_bins)
     if orientation == "var_on_x":
-        plt.plot(x, density_base(x), **get_line_specs(line_specs, 0))
+        plt.plot(x_base, density_base(x_base), **get_line_specs(line_specs, 0))
     elif orientation == "var_on_y":
-        plt.plot(density_base(x), x, **get_line_specs(line_specs, 0))
+        plt.plot(density_base(x_base), x_base, **get_line_specs(line_specs, 0))
 
     if isinstance(y[0], list):
         for i in range(len(y)):
-            density_arr = np.zeros((len(y[i]), n_bins + 1))
+            x = np.linspace(np.min(y[i]), np.max(y[i]), n_bins)
+            density_arr = np.zeros((len(y[i]), n_bins))
             for j, yy in enumerate(y[i]):
                 density = stats.gaussian_kde(yy)
                 density_arr[j] = density(x)[None, :]
@@ -164,7 +164,8 @@ def plot_statistics_ensemble(
                     zorder=2,
                 )
     else:
-        density_arr = np.zeros((len(y), n_bins + 1))
+        x = np.linspace(np.min(y), np.max(y), n_bins)
+        density_arr = np.zeros((len(y), n_bins))
         for i, yy in enumerate(y):
             density = stats.gaussian_kde(yy)
             density_arr[i] = density(x)[None, :]
@@ -263,6 +264,10 @@ def plot_asd(
     min_xlim = max(0, max_freq - range / 2)
     max_xlim = min_xlim + range
     plt.xlim([min_xlim, max_xlim])
+
+    min_ylim = -0.05 * np.max(asd_y_base)
+    max_ylim = 1.2 * np.max(asd_y_base)
+    plt.ylim([min_ylim, max_ylim])
 
     plt.grid()
     set_labels(xlabel, ylabel, legend, title)

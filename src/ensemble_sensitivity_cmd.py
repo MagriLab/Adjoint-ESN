@@ -24,15 +24,19 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 
 def main(args):
-    model_path = Path("local_results/rijke/run_20231029_153121")  # rijke with reservoir
-    data_dir = Path("data")
+    # load model
+    model_path = Path(args.model_dir) / f"run_{args.run_name}"
+    config = post.load_config(model_path)
+    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
-    test_sim_time = 310
-    test_loop_times = [2]
-    test_transient_time = 200
-    n_ensemble = 5
+    # set data directory
+    data_dir = Path(args.data_dir)
+
+    # options
+    n_ensemble = args.n_ensemble_esn
     eta_1_init = args.eta_1_init
 
+    # make a list of test parameters
     if len(args.beta) == 3:
         beta_list = np.arange(args.beta[0], args.beta[1], args.beta[2])
     elif len(args.beta) == 1:
@@ -42,11 +46,7 @@ def main(args):
         tau_list = np.arange(args.tau[0], args.tau[1], args.tau[2])
     elif len(args.tau) == 1:
         tau_list = [args.tau[0]]
-
     p_list = pp.make_param_mesh([beta_list, tau_list])
-
-    config = post.load_config(model_path)
-    results = pp.unpickle_file(model_path / "results.pickle")[0]
 
     # DATA creation
     integrator = "odeint"
@@ -64,10 +64,7 @@ def main(args):
 
     transient_time = config.simulation.transient_time
 
-    if args.train_noise_level >= 0.0:
-        noise_level = args.train_noise_level
-    else:
-        noise_level = config.simulation.noise_level
+    noise_level = config.simulation.noise_level
 
     random_seed = config.random_seed
 
@@ -206,6 +203,17 @@ def main(args):
 
     J = {"true": np.zeros(len(p_list)), "esn": np.zeros((n_ensemble, len(p_list)))}
 
+    test_transient_time = config.simulation.transient_time
+    test_washout_time = config.model.washout_time
+
+    # add fast jacobian condition
+    if config.model.input_only_mode == False and config.model.r2_mode == False:
+        fast_jac = True
+    print("Fast jac condition:", fast_jac)
+
+    test_sim_time = args.loop_time + test_transient_time + test_washout_time
+    test_loop_times = [args.loop_time]
+
     for p_idx, p in enumerate(p_list):
         p_sim = {"beta": p[eParam.beta], "tau": p[eParam.tau]}
 
@@ -238,7 +246,7 @@ def main(args):
             p_sim,
             network_dt=network_dt,
             transient_time=test_transient_time,
-            washout_time=washout_time,
+            washout_time=test_washout_time,
             loop_times=test_loop_times,
             input_vars=input_vars,
             output_vars=output_vars,
@@ -354,13 +362,21 @@ def main(args):
                         dJdp["esn"][method_name][
                             esn_idx, p_idx
                         ] = my_ESN.direct_sensitivity(
-                            X_pred_grad, Y_pred_grad, N, X_tau
+                            X_pred_grad,
+                            Y_pred_grad,
+                            N,
+                            X_tau,
+                            fast_jac=fast_jac,
                         )
                     elif method_name == "adjoint":
                         dJdp["esn"][method_name][
                             esn_idx, p_idx
                         ] = my_ESN.adjoint_sensitivity(
-                            X_pred_grad, Y_pred_grad, N, X_tau
+                            X_pred_grad,
+                            Y_pred_grad,
+                            N,
+                            X_tau,
+                            fast_jac=fast_jac,
                         )
                     elif method_name == "numerical":
                         dJdp["esn"][method_name][
@@ -389,11 +405,19 @@ def main(args):
                     if method_name == "direct":
                         dJdp["esn"][method_name][
                             esn_idx, p_idx
-                        ] = my_ESN.direct_sensitivity(X_pred_grad, Y_pred_grad, N, N_g)
+                        ] = my_ESN.direct_sensitivity(
+                            X_pred_grad,
+                            Y_pred_grad,
+                            N,
+                            N_g,
+                            fast_jac=fast_jac,
+                        )
                     elif method_name == "adjoint":
                         dJdp["esn"][method_name][
                             esn_idx, p_idx
-                        ] = my_ESN.adjoint_sensitivity(X_pred_grad, Y_pred_grad, N, N_g)
+                        ] = my_ESN.adjoint_sensitivity(
+                            X_pred_grad, Y_pred_grad, N, N_g, fast_jac=fast_jac
+                        )
                     elif method_name == "numerical":
                         dJdp["esn"][method_name][
                             esn_idx, p_idx
@@ -432,10 +456,14 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model_dir", type=str)
+    parser.add_argument("--run_name", type=str)
+    parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--beta", nargs="+", type=float, default=[0.6])
     parser.add_argument("--tau", nargs="+", type=float, default=[0.2])
     parser.add_argument("--same_washout", default=False, action="store_true")
     parser.add_argument("--eta_1_init", default=1.0, type=float)
-    parser.add_argument("--train_noise_level", type=float, default=5.0)
+    parser.add_argument("--n_ensemble_esn", default=1, type=int)
+    parser.add_argument("--loop_time", type=float, default=[2])
     parsed_args = parser.parse_args()
     main(parsed_args)
