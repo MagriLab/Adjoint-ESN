@@ -332,6 +332,7 @@ def main(args):
         "test_time": test_time,
         "same_washout": args.same_washout,
         "plot_names": plot_names,
+        "eta_1_init": eta_1_init,
     }
 
     print(f"Saving results.", flush=True)

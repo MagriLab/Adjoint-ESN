@@ -1,9 +1,8 @@
 from functools import partial
 
 import numpy as np
-from scipy.sparse import csc_matrix, csr_matrix, lil_matrix
-from scipy.sparse.linalg import eigs as sparse_eigs
-from sklearn.linear_model import ElasticNet, Lasso, Ridge
+from scipy.sparse import csr_matrix
+from sklearn.linear_model import Ridge
 
 import adjoint_esn.generate_input_weights as generate_input_weights
 import adjoint_esn.generate_reservoir_weights as generate_reservoir_weights

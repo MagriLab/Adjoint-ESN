@@ -238,7 +238,7 @@ def main(_):
             random_seed=config.random_seed + p_idx,
             tau=p_sim["tau"],
         )
-
+        print(p_sim, config.random_seed + p_idx)
         for loop_name in loop_names:
             [
                 DATA[loop_name][var].append(regime_data[loop_name][var])
@@ -350,6 +350,10 @@ def main(_):
     results = {
         "training_parameters": train_param_list,
         "validation_parameters": val_param_list,
+        "training_random_seeds": config.random_seed
+        + np.arange(len(param_list))[new_list_train_idx],
+        "validation_random_seeds": config.random_seed
+        + np.arange(len(param_list))[new_list_val_idx],
         **min_dict,
     }
 

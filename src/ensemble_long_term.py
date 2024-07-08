@@ -102,6 +102,11 @@ def main(args):
             integrator=integrator,
         )
 
+        if "training_random_seeds" in results.keys():
+            noise_seed = results["training_random_seeds"][p_idx]
+        else:
+            noise_seed = random_seed + p_idx
+
         regime_data = pp.create_dataset(
             y_sim,
             t_sim,
@@ -117,7 +122,7 @@ def main(args):
             N_g=N_g,
             u_f_order=u_f_order,
             noise_level=noise_level,
-            random_seed=random_seed,
+            random_seed=noise_seed,
             tau=p_sim["tau"],
         )
 
@@ -224,7 +229,7 @@ def main(args):
             y_pred = y_pred[1:]
         else:
             y0 = np.zeros((1, data["long"]["u_washout"].shape[1]))
-            y0[0, 0] = 1.0
+            y0[0, 0] = 1.5
             u_washout_auto = np.repeat(y0, [len(data["long"]["u_washout"])], axis=0)
             transient_steps = pp.get_steps(transient_time, network_dt)
             # add the transient time that will be discarded later
@@ -269,7 +274,7 @@ def main(args):
 
 # add option not to save the truth
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--model_dir", type=str)
     parser.add_argument("--run_name", type=str)
     parser.add_argument("--data_dir", default="data", type=str)

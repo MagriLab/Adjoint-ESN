@@ -3,6 +3,7 @@ from itertools import combinations
 import numpy as np
 import scipy
 
+from adjoint_esn.rijke_galerkin.solver import Rijke
 from adjoint_esn.utils import preprocessing as pp
 
 
@@ -71,19 +72,58 @@ def continuous_variation(sys, u, M, t, dt):
     return M_next
 
 
-def ESN_variation(sys, u, u_prev, M):
+def ESN_variation(sys, u, u_prev, M, fast_jac=False):
     """Variation of the ESN.
     Evolution in the tangent space.
     """
     dtanh = sys.dtanh(u, u_prev)[:, None]
     # jacobian of the reservoir dynamics
-    jac = sys.jac(dtanh, u_prev)
+    # choose fast jacobian
+    if fast_jac == True:
+        jac_fun = lambda dtanh, x_prev: sys.fast_jac(dtanh)
+    else:
+        jac_fun = lambda dtanh, x_prev: sys.jac(dtanh, x_prev)
+
+    jac = jac_fun(dtanh, u_prev)
     M_next = np.matmul(jac, M)  # because ESN discrete time map
     return M_next
 
 
+def RijkeESN_variation(sys, u, u_prev, u_tau, M, M_tau, fast_jac=False):
+    """Variation of the ESN.
+    Evolution in the tangent space.
+    """
+    dtanh = sys.dtanh(u, u_prev)[:, None]
+    # jacobian of the reservoir dynamics
+    # choose fast jacobian
+    if fast_jac == True:
+        jac_fun = lambda dtanh, x_prev: sys.fast_jac(dtanh)
+    else:
+        jac_fun = lambda dtanh, x_prev: sys.jac(dtanh, x_prev)
+
+    jac = jac_fun(dtanh, u_prev)
+
+    x_aug = sys.before_readout(u_tau)
+    eta_tau = np.dot(x_aug, sys.W_out)[0 : sys.N_g]
+    u_f_tau = Rijke.toVelocity(N_g=sys.N_g, eta=eta_tau, x=np.array([sys.x_f]))
+    jac_tau = sys.jac_tau(dtanh, u_f_tau)
+    M_next = np.matmul(jac, M) + np.matmul(
+        jac_tau, M_tau
+    )  # because ESN discrete time map
+    return M_next
+
+
 def calculate_LEs(
-    sys, sys_type, X, t, transient_time, dt, norm_step=1, target_dim=None
+    sys,
+    sys_type,
+    X,
+    t,
+    transient_time,
+    dt,
+    norm_step=1,
+    target_dim=None,
+    fast_jac=False,
+    X_past=None,
 ):
     """Calculate the Lyapunov exponents
     Args:
@@ -127,13 +167,26 @@ def calculate_LEs(
     Q, R = qr_factorization(U)
     U = Q[:, :target_dim]
 
+    # if past is given, stack with the past
+    if sys_type == "RijkeESN" and X_past is not None:
+        XX = np.vstack((X_past[-sys.N_tau - 1 : -1, :], X))
+        U_arr = []
+        U_arr.append(U)
+
     idx = 0
     for i in range(1, N):
         if sys_type == "continuous":
             U = continuous_variation(sys, X[i], U, t[i], dt)
         elif sys_type == "ESN":
-            U = ESN_variation(sys, X[i], X[i - 1], U)
-
+            U = ESN_variation(sys, X[i], X[i - 1], U, fast_jac=fast_jac)
+        elif sys_type == "RijkeESN":
+            if i <= sys.N_tau:
+                U_tau = np.zeros_like(U)
+            else:
+                U_tau = U_arr[i - 1]
+            U = RijkeESN_variation(
+                sys, X[i], X[i - 1], XX[i - 1], U, U_tau, fast_jac=fast_jac
+            )
         if i % norm_step == 0:
             Q, R = qr_factorization(U)
             U = Q[:, :target_dim].copy()
@@ -144,6 +197,8 @@ def calculate_LEs(
                 FTLE[idx] = (1.0 / dt) * np.log(LE[idx])
                 idx += 1
 
+        if sys_type == "RijkeESN":
+            U_arr.append(U)
     LEs = np.cumsum(np.log(LE[:]), axis=0) / np.tile(T[:], (target_dim, 1)).T
     return LEs, FTLE, QQ, RR
 

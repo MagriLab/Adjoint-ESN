@@ -70,8 +70,8 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.array([7.6])
-    tau_list = np.array([0.22])
+    beta_list = np.array([4.5])
+    tau_list = np.array([0.12])
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     print(mp.cpu_count())

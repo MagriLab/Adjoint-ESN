@@ -125,6 +125,11 @@ def main(args):
             integrator=integrator,
         )
 
+        if "training_random_seeds" in results.keys():
+            noise_seed = results["training_random_seeds"][p_idx]
+        else:
+            noise_seed = random_seed + p_idx
+
         regime_data = pp.create_dataset(
             y_sim,
             t_sim,
@@ -140,7 +145,7 @@ def main(args):
             N_g=N_g,
             u_f_order=u_f_order,
             noise_level=noise_level,
-            random_seed=random_seed,
+            random_seed=noise_seed,
             tau=p_sim["tau"],
         )
 

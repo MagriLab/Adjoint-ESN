@@ -51,7 +51,14 @@ def get_ESN_properties_from_results(config, results, dim, top_idx=0):
     hyp_param_names = []
     hyp_params = []
     for name in results.keys():
-        if name not in ["training_parameters", "validation_parameters", "f", "tikh"]:
+        if name not in [
+            "training_parameters",
+            "validation_parameters",
+            "f",
+            "tikh",
+            "training_random_seeds",
+            "validation_random_seeds",
+        ]:
             if results[name].ndim == 2:
                 hyp_param_names.extend([name] * results[name].shape[1])
                 hyp_params.extend(results[name][top_idx])

@@ -14,7 +14,7 @@ def visualize_heat_release(my_ESN):
     eOutputVar = get_eVar(output_vars, my_ESN.N_g)
 
     color = plt.cm.tab20(np.linspace(0, 1, len(beta_list)))
-    fig, axes = plt.subplots(1, my_ESN.N_g, figsize=(20, 3))
+    fig, axes = plt.subplots(1, my_ESN.N_g, figsize=(20, 5))
 
     for beta_idx, beta in enumerate(beta_list):
         for j in np.arange(1, my_ESN.N_g + 1):
@@ -36,7 +36,7 @@ def visualize_heat_release(my_ESN):
 
                     # contribution of beta
                     w_in_beta = my_ESN.W_in[u_f_idx, -1].toarray() * (
-                        (beta - my_ESN.norm_p[0]) / my_ESN.norm_p[1]
+                        (beta - my_ESN.norm_p[0]) * my_ESN.norm_p[1]
                     )
 
                     # heat release
@@ -52,7 +52,7 @@ def visualize_heat_release(my_ESN):
                 ]
                 # contribution of beta
                 w_in_beta = my_ESN.W_in[u_f_idx, -my_ESN.N_param_dim].toarray() * (
-                    (beta - my_ESN.norm_p[0]) / my_ESN.norm_p[1]
+                    (beta - my_ESN.norm_p[0]) * my_ESN.norm_p[1]
                 )
 
                 w_in_u_f = 0
@@ -75,7 +75,9 @@ def visualize_heat_release(my_ESN):
             )
 
             axes[j - 1].plot(u_f_tau, q_dot[beta_idx], color=color[beta_idx])
-            axes[j - 1].legend([f"beta = {beta}" for beta in beta_list], ncols=2)
+            axes[0].legend(
+                [f"beta = {beta}" for beta in beta_list], ncols=2, loc="upper center"
+            )
             axes[j - 1].set_xlabel("u_f(t-tau)")
             axes[j - 1].set_ylabel("Heat release")
             axes[j - 1].set_title(f"mu_{j}")

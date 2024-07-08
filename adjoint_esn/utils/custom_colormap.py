@@ -4,7 +4,9 @@ import matplotlib.colors as mcolors
 import numpy as np
 
 # user-defined color maps
-discrete_dict = {"defne": ["#03BDAB", "#FEAC16", "#5D00E6", "#F2BCF3", "#AFEEEE"]}
+discrete_dict = {
+    "defne": ["#03BDAB", "#FEAC16", "#5D00E6", "#F2BCF3", "#AFEEEE", "#E92C91"]
+}
 continuous_dict = {
     "defne": ["#03BDAB", "#FEAC16", "#5D00E6"],
     "aqua": [

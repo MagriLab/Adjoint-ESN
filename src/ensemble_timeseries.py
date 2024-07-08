@@ -250,7 +250,7 @@ def main(args):
 
 # add option not to save the truth
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--model_dir", type=str)
     parser.add_argument("--run_name", type=str)
     parser.add_argument("--data_dir", default="data", type=str)

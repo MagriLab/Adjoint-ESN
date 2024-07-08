@@ -1,7 +1,6 @@
 from functools import partial
 
 import numpy as np
-from sklearn.linear_model import ElasticNet, Lasso, Ridge
 
 import adjoint_esn.generate_input_weights as generate_input_weights
 from adjoint_esn.esn import ESN

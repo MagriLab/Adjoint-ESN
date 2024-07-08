@@ -123,7 +123,11 @@ def loop(
     # initialize a base ESN object with unit input scaling and spectral radius
     # seeds not given, so the random generator creates a different seed each run
     global run_idx
-    run_idx += 1
+    try:
+        run_idx += 1
+    except:
+        run_idx = 0
+
     print("--NEW RUN--", run_idx)
 
     realisation_error = np.zeros(n_realisations)

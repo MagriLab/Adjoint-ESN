@@ -1,3 +1,4 @@
+import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal, stats
@@ -51,7 +52,7 @@ def plot_phase_space(
     return
 
 
-def plot_lorenz63_attractor(fig, U, U_pred, length):
+def plot_lorenz63_attractor(fig, U, U_pred, length, colors, animate=False, legend=None):
     """A function to plot input data of Lorenz 63
 
     Args:
@@ -65,32 +66,64 @@ def plot_lorenz63_attractor(fig, U, U_pred, length):
         Plot 4 : Convection Current and Thermal Plots
     """
 
-    # 3D PLOT OF LORENZ 63 ATTRACTOR
-    ax = fig.add_subplot(1, 2, 1, projection="3d")
-    ax.set_xlabel("x", labelpad=5)
-    ax.set_ylabel("y", labelpad=5)
-    ax.set_zlabel("z", labelpad=5)
-    ax.plot(*U[:length, :].T, lw=0.6, c="tab:blue")
-    ax.set_title("True")
-    xlims = ax.get_xlim()
-    ylims = ax.get_ylim()
-    zlims = ax.get_zlim()
-    ax.dist = 11.5
-    plt.tight_layout()
-    plt.grid()
+    def update(num, ax1, ax2, fig):
+        ax1.view_init(azim=num)
+        ax2.view_init(azim=num)
+        return (fig,)
 
-    ax = fig.add_subplot(1, 2, 2, projection="3d")
-    ax.set_xlabel("x", labelpad=5)
-    ax.set_ylabel("y", labelpad=5)
-    ax.set_zlabel("z", labelpad=5)
-    ax.plot(*U_pred[:length, :].T, lw=0.6, c="tab:orange")
-    ax.set_title("Prediction")
-    ax.set_xlim(xlims)
-    ax.set_ylim(ylims)
-    ax.set_zlim(zlims)
-    ax.dist = 11.5
+    # 3D PLOT OF LORENZ 63 ATTRACTOR
+    ax1 = fig.add_subplot(1, 2, 1, projection="3d")
+    ax1.set_xlabel("$x$", labelpad=15)
+    ax1.set_ylabel("$y$", labelpad=15)
+    ax1.set_zlabel("$z$", labelpad=15)
+    if isinstance(U, list):
+        for i, UU in enumerate(U):
+            ax1.plot(*UU[:length, :].T, lw=1.0, c=colors[0][i])
+    else:
+        ax1.plot(*U[:length, :].T, lw=1.0, c=colors[0])
+    # ax.set_title("True")
+    xlims = ax1.get_xlim()
+    ylims = ax1.get_ylim()
+    zlims = ax1.get_zlim()
+    ax1.dist = 10
+    ax1.set_box_aspect([1, 1, 1.1])
     plt.tight_layout()
-    plt.grid()
+    # plt.grid()
+
+    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
+    ax2.set_xlabel("$x$", labelpad=15)
+    ax2.set_ylabel("$y$", labelpad=15)
+    ax2.set_zlabel("$z$", labelpad=15)
+    if isinstance(U_pred, list):
+        for i, UU_pred in enumerate(U_pred):
+            ax2.plot(*UU_pred[:length, :].T, lw=1.0, c=colors[1][i])
+    else:
+        ax2.plot(*U_pred[:length, :].T, lw=1.0, c=colors[1])
+    # ax.set_title("Prediction")
+    ax2.set_xlim(xlims)
+    ax2.set_ylim(ylims)
+    ax2.set_zlim(zlims)
+    ax2.dist = 10
+    ax2.set_box_aspect([1, 1, 1.1])
+    plt.tight_layout()
+    # plt.grid()
+
+    if legend:
+        ax1.legend(legend, loc="upper right", fontsize=14)
+        ax2.legend(legend, loc="upper right", fontsize=14)
+
+    if animate:
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=range(0, 360, 2),
+            fargs=(ax1, ax2, fig),
+            interval=100,
+            blit=False,
+        )
+    else:
+        None
+    return ani
 
 
 def plot_statistics(
@@ -127,6 +160,9 @@ def plot_statistics_ensemble(
     # Histogram option
     density_base = stats.gaussian_kde(y_base)
     x_base = np.linspace(np.min(y_base), np.max(y_base), n_bins)
+    # check if normalized
+    # pdf_sum = np.trapz(density_base(x_base), x_base)
+    # print(pdf_sum)
     if orientation == "var_on_x":
         plt.plot(x_base, density_base(x_base), **get_line_specs(line_specs, 0))
     elif orientation == "var_on_y":

@@ -68,6 +68,19 @@ def load_data(
     data_path = (
         data_dir / f"rijke_kings_poly_N_g_{N_g}_beta_{beta_name}_tau_{tau_name}.h5"
     )
+    my_rijke = Rijke(
+        N_g=N_g,
+        N_c=10,
+        c_1=0.1,
+        c_2=0.06,
+        beta=beta,
+        x_f=x_f,
+        tau=tau,
+        heat_law="kings_poly",
+        damping="modal",
+    )
+    y0_default = np.zeros(my_rijke.N_dim)
+    y0_default[0] = 1.0
 
     run_sim = False
     if data_path.exists():
@@ -92,8 +105,11 @@ def load_data(
             print(f"Integrator not odeint, saved data was generated with odeint.")
             run_sim = True
 
-        if y_init is not None:
-            run_sim = True
+        if y_init is None:
+            run_sim = False
+        else:
+            if not all(np.equal(y_init, y0_default)):
+                run_sim = True
 
         if run_sim == False:
             # reduce the simulation time steps if necessary
@@ -104,23 +120,11 @@ def load_data(
         run_sim = True
 
     if run_sim:
-        my_rijke = Rijke(
-            N_g=N_g,
-            N_c=10,
-            c_1=0.1,
-            c_2=0.06,
-            beta=beta,
-            x_f=x_f,
-            tau=tau,
-            heat_law="kings_poly",
-            damping="modal",
-        )
         # run simulation
         if y_init is not None:
             y0 = y_init
         else:
-            y0 = np.zeros(my_rijke.N_dim)
-            y0[0] = 1.0
+            y0 = y0_default
 
         # temporal grid
         t = np.arange(0, sim_time + sim_dt, sim_dt)
