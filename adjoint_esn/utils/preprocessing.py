@@ -246,13 +246,13 @@ def create_dataset(
     filter=None,
     f0=5,  # omega = 10 * pi, which is 10 harmonics more or less
 ):
+    y = y[:, : 2 * N_g + 10]  # get rid of extra columns
     y, t = upsample(y, t, network_dt)
     y, t = discard_transient(y, t, transient_time)
 
     # add noise
     if noise_level > 0 or noise_std > 0:
         y = y + generate_noise(y, noise_level, random_seed, noise_std)
-
     # filter noise
     if filter == "low":  # apply low-pass filter to the data
         for y_idx in range(y.shape[1]):
