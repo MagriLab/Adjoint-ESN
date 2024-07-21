@@ -21,15 +21,16 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 plt.style.use("src/stylesheet2.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
+plt.style.use("dark_background")
 
-figure_size = (15, 10)
+figure_size = (10, 7.5)
 
-save_fig = False
+save_fig = True
 
-beta_list = [8.0, 8.5, 8.7, 9.0]
-tau = 0.22
+beta_list = [4.0, 6.2, 7.2]
+tau = 0.2
 N_g = 4
-plot_time = 40
+plot_time = 10
 transient_time = 200
 sim_time = transient_time + plot_time
 sim_dt = 1e-3
@@ -112,7 +113,9 @@ for beta in beta_list:
     # ax1.set_ylabel('$x$')
     # cb.ax.set_title('$u$')
 
-    # if save_fig:
-    #     plt.savefig(f'paper/graphics_ppt/true_timeseries_beta_{beta_name}_tau_{tau_name}.png', dpi=300)
-    # else:
-plt.show()
+    if save_fig:
+        plt.savefig(
+            f"paper/graphics_ppt/true_timeseries_beta_{beta_name}_tau_{tau_name}_black.png",
+            dpi=300,
+        )
+# plt.show()

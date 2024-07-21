@@ -518,6 +518,133 @@ class RijkeESN(ESN):
 
         return dJdp
 
+    def direct_sensitivity_x0(self, X, Y, N, dJdy_fun=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial reservoir state x0
+        Calculated using DIRECT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            X_past:
+
+        Returns:
+            dJdp: direct sensitivity to parameters
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize direct variables, dx(i+1)/dx(0)
+        # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
+        # we add time delay, tau as a parameter
+        q = np.zeros((N + 1, self.N_reservoir, self.N_reservoir))
+        q[0] = np.eye(self.N_reservoir)
+
+        for i in np.arange(1, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # integrate direct variables forwards in time
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            if i <= self.N_tau:
+                q[i] = np.dot(jac, q[i - 1])
+            # depends on the past
+            elif i > self.N_tau:
+                x_aug = self.before_readout(X[i - 1 - self.N_tau, :])
+                eta_tau = np.dot(x_aug, self.W_out)[0 : self.N_g]
+                u_f_tau = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
+                )
+                jac_tau = self.jac_tau(dtanh, u_f_tau)
+                q[i] = +np.dot(jac, q[i - 1]) + np.dot(jac_tau, q[i - self.N_tau - 1])
+
+        # get objective with respect to terminal output states
+        dJdy = dJdy_fun(Y[-1])
+
+        # gradient of objective with respect to reservoir states
+        dydf = self.dydf(X[-1, :])
+        dJdf = np.dot(dJdy, dydf)
+
+        # sensitivity to initial reservoir state
+        dJdx0 = np.dot(dJdf, q[-1])
+
+        return dJdx0
+
+    def direct_sensitivity_u0(self, X, Y, N, dJdy_fun=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial input u0
+        Calculated using DIRECT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+
+        Returns:
+            dJdp: direct sensitivity to parameters
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize direct variables, dx(i+1)/dx(0)
+        # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
+        # we add time delay, tau as a parameter
+        dtanh = self.dtanh(X[1, :], X[0, :])[:, None]
+        dfdu0 = np.multiply(self.dfdu_const.toarray(), dtanh)
+        q = np.zeros((N + 1, self.N_reservoir, self.N_dim))
+        q[1] = dfdu0
+
+        for i in np.arange(2, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # integrate direct variables forwards in time
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            if i <= self.N_tau:
+                q[i] = np.dot(jac, q[i - 1])
+            # depends on the past
+            elif i > self.N_tau:
+                x_aug = self.before_readout(X[i - 1 - self.N_tau, :])
+                eta_tau = np.dot(x_aug, self.W_out)[0 : self.N_g]
+                u_f_tau = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
+                )
+                jac_tau = self.jac_tau(dtanh, u_f_tau)
+                q[i] = +np.dot(jac, q[i - 1]) + np.dot(jac_tau, q[i - self.N_tau - 1])
+
+        # get objective with respect to terminal output states
+        dJdy = dJdy_fun(Y[-1])
+
+        # gradient of objective with respect to reservoir states
+        dydf = self.dydf(X[-1, :])
+        dJdf = np.dot(dJdy, dydf)
+
+        # sensitivity to initial reservoir state
+        dJdu0 = np.dot(dJdf, q[-1])
+
+        return dJdu0
+
     def adjoint_sensitivity(
         self, X, Y, N, X_past, method="central", dJdy_fun=None, fast_jac=False
     ):
@@ -529,10 +656,7 @@ class RijkeESN(ESN):
             X: trajectory of reservoir states around which we find the sensitivity
             P: parameter
             N: number of steps
-            N_g: number of galerkin modes,
-                assuming outputs are ordered such that the first 2*N_g correspond to the
-                Galerkin amplitudes
-
+            X_past: IMPORTANT! X_past[-1] = X[0]
         Returns:
             dJdp: adjoint sensitivity to parameters
         """
@@ -556,7 +680,7 @@ class RijkeESN(ESN):
         dJdp = np.zeros(self.N_param_dim + 1)
 
         # stack with the past
-        XX = np.vstack((X_past[-self.N_tau - 1 : -1, :], X))
+        XX = np.vstack((X_past[-self.N_tau - 1 : -1, :], X))  # X_past[-1] = X[0]
 
         # integrate backwards
         # objective function at the terminal state
@@ -641,6 +765,133 @@ class RijkeESN(ESN):
 
         return dJdp
 
+    def adjoint_sensitivity_x0(self, X, Y, N, dJdy_fun=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial reservoir state x0
+        Calculated using ADJOINT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            X_past:
+
+        Returns:
+            dJdx0: adjoint sensitivity to to the initial reservoir state
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # integrate backwards
+        # objective function at the terminal state
+        dJdy = dJdy_fun(Y[N])
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(X[N, :])
+        v[N] = np.dot(dJdy, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            if i <= N - self.N_tau:
+                # need tau "advanced" velocity (delayed becomes advanced in adjoint)
+                eta_tau_future = Y[i - 1, 0 : self.N_g]
+                u_f_tau_future = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau_future, x=np.array([self.x_f])
+                )
+
+                dtanh_future = self.dtanh(
+                    X[i + self.N_tau, :], X[i + self.N_tau - 1, :]
+                )[:, None]
+                jac_tau = self.jac_tau(dtanh_future, u_f_tau_future)
+                v[i - 1] = np.dot(jac.T, v[i]) + np.dot(jac_tau.T, v[i + self.N_tau])
+            else:
+                v[i - 1] = np.dot(jac.T, v[i])
+
+        dJdx0 = v[0]
+        return dJdx0
+
+    def adjoint_sensitivity_u0(self, X, Y, N, dJdy_fun=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial input u0
+        Calculated using ADJOINT method
+        Objective is squared L2 of the 2*N_g output states, i.e. acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            X_past:
+
+        Returns:
+            dJdu0: adjoint sensitivity to the initial input u0
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=self.N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # integrate backwards
+        # objective function at the terminal state
+        dJdy = dJdy_fun(Y[N])
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(X[N, :])
+        v[N] = np.dot(dJdy, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            if i <= N - self.N_tau:
+                # need tau "advanced" velocity (delayed becomes advanced in adjoint)
+                eta_tau_future = Y[i - 1, 0 : self.N_g]
+                u_f_tau_future = Rijke.toVelocity(
+                    N_g=self.N_g, eta=eta_tau_future, x=np.array([self.x_f])
+                )
+
+                dtanh_future = self.dtanh(
+                    X[i + self.N_tau, :], X[i + self.N_tau - 1, :]
+                )[:, None]
+                jac_tau = self.jac_tau(dtanh_future, u_f_tau_future)
+                v[i - 1] = np.dot(jac.T, v[i]) + np.dot(jac_tau.T, v[i + self.N_tau])
+            else:
+                v[i - 1] = np.dot(jac.T, v[i])
+
+        dfdu0 = np.multiply(self.dfdu_const.toarray(), dtanh)
+        dJdu0 = np.dot(v[1], dfdu0)
+        return dJdu0
+
     def finite_difference_sensitivity(
         self, X, Y, X_tau, P, N, h=1e-5, method="central", J_fun=None
     ):
@@ -681,7 +932,9 @@ class RijkeESN(ESN):
             P_left[:, i] -= h
             P_right = P.copy()
             P_right[:, i] += h
-            _, Y_left = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_left)
+            _, Y_left = self.closed_loop(
+                X_tau[-self.N_tau - 1 :, :], N, P_left
+            )  # we need N_tau past + current
             _, Y_right = self.closed_loop(X_tau[-self.N_tau - 1 :, :], N, P_right)
             J_left = J_fun(Y_left[1:])
             J_right = J_fun(Y_right[1:])
@@ -703,3 +956,104 @@ class RijkeESN(ESN):
         self.tau = orig_tau
 
         return dJdp
+
+    def finite_difference_sensitivity_x0(
+        self, X, Y, X_tau, P, N, h=1e-5, method="central", J_fun=None
+    ):
+        # initialize sensitivity
+        dJdx0 = np.zeros((self.N_reservoir))
+
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy_inst, N_g=self.N_g)
+
+        # compute the energy of the base
+        J = J_fun(Y[-1, :])
+
+        # define which finite difference method to use
+        finite_difference = partial(finite_differences, method=method)
+
+        # perturbed by h
+        for i in range(self.N_reservoir):
+            x0_left = X_tau[-self.N_tau - 1 :, :].copy()  # we need N_tau past + current
+            x0_left[-1, i] -= h
+            x0_right = X_tau[-self.N_tau - 1 :, :].copy()
+            x0_right[-1, i] += h
+            _, Y_left = self.closed_loop(x0_left, N, P)
+            _, Y_right = self.closed_loop(x0_right, N, P)
+            J_left = J_fun(Y_left[-1, :])
+            J_right = J_fun(Y_right[-1, :])
+
+            dJdx0[i] = finite_difference(J, J_right, J_left, h)
+        return dJdx0
+
+    def finite_difference_sensitivity_u0(
+        self, X, Y, X_tau, P, N, h=1e-5, method="central", J_fun=None
+    ):
+        # MAKE SURE X[0] == X_tau[-1] they must be aligned!!
+
+        # initialize sensitivity
+        dJdu0 = np.zeros((self.N_dim))
+
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy_inst, N_g=self.N_g)
+
+        # compute the energy of the base
+        J = J_fun(Y[-1, :])
+
+        # define which finite difference method to use
+        finite_difference = partial(finite_differences, method=method)
+
+        # find y_tau
+        # augment the reservoir states with the bias
+        if self.r2_mode:
+            x_tau_2 = X_tau[-self.N_tau - 1, :].copy()
+            x_tau_2[1::2] = x_tau_2[1::2] ** 2
+            x_tau_augmented = np.hstack((x_tau_2, self.b_out))
+        else:
+            x_tau_augmented = np.hstack((X_tau[-self.N_tau - 1, :], self.b_out))
+
+        y_tau = np.dot(x_tau_augmented, self.W_out)
+        eta_tau = y_tau[0 : self.N_g]
+        velocity_f_tau = Rijke.toVelocity(
+            N_g=self.N_g, eta=eta_tau, x=np.array([self.x_f])
+        )
+
+        # perturbed by h
+        for i in range(self.N_dim):
+            y0_left = Y[0, :].copy()
+            y0_left[i] -= h
+
+            y0_right = Y[0, :].copy()
+            y0_right[i] += h
+
+            # augment
+            y_augmented_left = y0_left
+            for order in range(self.u_f_order):
+                y_augmented_left = np.hstack(
+                    (y_augmented_left, velocity_f_tau ** (order + 1))
+                )
+
+            y_augmented_right = y0_right
+            for order in range(self.u_f_order):
+                y_augmented_right = np.hstack(
+                    (y_augmented_right, velocity_f_tau ** (order + 1))
+                )
+
+            # get perturbed reservoir state
+            x1_left = self.step(X[0, :], y_augmented_left, P[0, :])
+            x1_right = self.step(X[0, :], y_augmented_right, P[0, :])
+
+            # append perturbed reservoir state to the past
+            X_tau_left = X_tau[-self.N_tau :, :].copy()
+            X_tau_left = np.vstack([X_tau_left, x1_left])
+            X_tau_right = X_tau[-self.N_tau :, :].copy()
+            X_tau_right = np.vstack([X_tau_right, x1_right])
+
+            _, Y_left = self.closed_loop(X_tau_left, N - 1, P)
+            _, Y_right = self.closed_loop(X_tau_right, N - 1, P)
+
+            J_left = J_fun(Y_left[-1, :])
+            J_right = J_fun(Y_right[-1, :])
+
+            dJdu0[i] = finite_difference(J, J_right, J_left, h)
+        return dJdu0

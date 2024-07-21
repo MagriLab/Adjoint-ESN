@@ -21,6 +21,8 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 18})
 rc("text", usetex=True)
+plt.style.use("dark_background")
+
 save_fig = True
 same_washout = True
 model_path = Path("local_results/lorenz63/run_20240208_121804")
@@ -31,7 +33,7 @@ fig_name = "lorenz_phase"
 eParam = Lorenz63.get_eParamVar()
 test_param_list = np.zeros((3, 3))
 
-which_param = "sigma"
+which_param = "rho"
 if which_param == "beta":
     test_param_list[:, eParam.beta] = np.linspace(2.0, 3.0, len(test_param_list))
     test_param_list[:, eParam.rho] = np.array([28.0] * len(test_param_list))
@@ -277,6 +279,9 @@ for p_idx, p in enumerate(test_param_list):
 cmap = cm.create_custom_colormap(type="discrete")
 true_color = cmap(0)
 pred_color = cmap(2)
+
+# true_color = "#196B24"
+# pred_color = "#A02B93"
 cmap2 = cm.create_custom_colormap(
     type="continuous", colors=[true_color, "white"], N=len(test_param_list)
 )
@@ -307,7 +312,9 @@ if save_fig:
         dpi=300,
     )
     ani.save(
-        f"local_images/figure_{fig_name}_ani_{which_param}.gif", writer="pillow", fps=10
+        f"local_images/figure_{fig_name}_ani_{which_param}_black_v2.gif",
+        writer="pillow",
+        fps=10,
     )
     # ani.save(f"local_images/figure_{fig_name}_ani_rho.gif", writer='imagemagick', fps=10, extra_args=['-loop', str(3)])
 plt.show()

@@ -105,9 +105,7 @@ def load_data(
             print(f"Integrator not odeint, saved data was generated with odeint.")
             run_sim = True
 
-        if y_init is None:
-            run_sim = False
-        else:
+        if y_init is not None:
             if not all(np.equal(y_init, y0_default)):
                 run_sim = True
 

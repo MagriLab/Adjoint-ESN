@@ -20,10 +20,11 @@ pathlib.PosixPath = pathlib.WindowsPath
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
+plt.style.use("dark_background")
 
 figure_size = (15, 5)
 
-save_fig = False
+save_fig = True
 
 true_color = cmap(0)
 pred_color = cmap(1)
@@ -168,15 +169,17 @@ for res_idx in range(len(res_paths)):
             if len(plt_idx_arr) == 1:
                 ax[i].set_ylim(ylims)
                 ax[i].grid()
-                ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+                # ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
             else:
                 ax[i, j].set_ylim(ylims)
                 ax[i, j].grid()
-                ax[i, j].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+                # ax[i, j].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
             tt += 1
 if save_fig:
     fig.savefig(
-        f"paper/graphics/figure_bifn_diagram.png", bbox_inches="tight", dpi=1200
+        f"paper/graphics_ppt/figure_bifn_diagram_black.png",
+        bbox_inches="tight",
+        dpi=1200,
     )
-    fig.savefig(f"paper/graphics/figure_bifn_diagram.pdf", bbox_inches="tight")
+    # fig.savefig(f"paper/graphics/figure_bifn_diagram.pdf", bbox_inches="tight")
 plt.show()

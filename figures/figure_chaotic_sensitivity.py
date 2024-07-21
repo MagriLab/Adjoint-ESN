@@ -16,8 +16,9 @@ from adjoint_esn.utils import visualizations as vis
 from adjoint_esn.utils.enums import eParam
 
 plt.style.use("src/stylesheet.mplstyle")
+plt.style.use("dark_background")
 
-save_fig = False
+save_fig = True
 figsize = (15, 5)
 
 model_path = Path("final_results/rijke/run_20240307_175258")
@@ -87,7 +88,7 @@ for res_idx, res_cont_name in enumerate(res_cont_names):
             zorder=2,
         )
         ax[i].set_ylabel(f"$dJ/d\\{param}$")
-        ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+        # ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
         tt += 1
 
 ax[0].set_xticklabels([])
@@ -143,7 +144,7 @@ for res_idx, res_ens_name in enumerate(res_ens_names):
         plt.xlim(
             [dJdp_true_mean - 2 * dJdp_true_std, dJdp_true_mean + 2 * dJdp_true_std]
         )
-        ax[i, res_idx].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+        # ax[i, res_idx].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
         tt += 1
 ax[0, 0].set_ylabel("PDF")
 ax[1, 0].set_ylabel("PDF")
@@ -154,16 +155,21 @@ for child in plt.gca().get_children():
         h.append(child)
 h.append(h1)
 h.append(h2)
-subfigs[1].legend(
-    h,
-    ["True", "ESN", "True mean", "ESN mean"],
-    ncol=4,
-    loc="upper center",
-    bbox_to_anchor=(0.5, 1.1),
+# subfigs[1].legend(
+#     h,
+#     ["True", "ESN", "True mean", "ESN mean"],
+#     ncol=4,
+#     loc="upper center",
+#     bbox_to_anchor=(0.5, 1.1),
+# )
+ax[0, 0].legend(
+    h, ["True", "ESN"], ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.3)
 )
 if save_fig:
     fig.savefig(
-        f"paper/graphics/figure_chaotic_sensitivity.png", bbox_inches="tight", dpi=300
+        f"paper/graphics_ppt/figure_chaotic_sensitivity_black.png",
+        bbox_inches="tight",
+        dpi=300,
     )
-    fig.savefig(f"paper/graphics/figure_chaotic_sensitivity.pdf", bbox_inches="tight")
+    # fig.savefig(f"paper/graphics/figure_chaotic_sensitivity.pdf", bbox_inches="tight")
 plt.show()

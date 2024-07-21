@@ -21,6 +21,7 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
+plt.style.use("dark_background")
 
 save_fig = True
 model_path = Path("final_results/rijke/run_20231029_153121")  # rijke with reservoir
@@ -344,11 +345,11 @@ for p_idx, p in enumerate(p_hist):
 
     if save_fig:
         fig.savefig(
-            f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.png",
+            f"paper/graphics_ppt/figure_{fig_name}_iter_{iter_idx[p_idx]}_black.png",
             bbox_inches="tight",
         )
-        fig.savefig(
-            f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.pdf",
-            bbox_inches="tight",
-        )
+        # fig.savefig(
+        #     f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.pdf",
+        #     bbox_inches="tight",
+        # )
 plt.show()

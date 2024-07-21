@@ -817,6 +817,9 @@ class ESN:
         # Y matrix
         return 1 / 4 * np.mean(np.sum(Y[:, 0 : 2 * N_g] ** 2, axis=1))
 
+    def acoustic_energy_inst(self, y, N_g):
+        return 1 / 4 * (np.sum(y[0 : 2 * N_g] ** 2))
+
     def dacoustic_energy(self, Y, N_g):
         # Y vector
         yy = np.zeros_like(Y)
@@ -882,6 +885,119 @@ class ESN:
             dJdp += np.dot(dJdf, q[i])
 
         return dJdp
+
+    def direct_sensitivity_x0(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial reservoir state x0
+        Calculated using DIRECT method
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            dJdy_fun: derivative of objective function
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdx0: direct sensitivity to initial reservoir state
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize direct variables, dx(i+1)/dx(0)
+        q = np.zeros((N + 1, self.N_reservoir, self.N_reservoir))
+        q[0] = np.eye(self.N_reservoir)
+
+        for i in np.arange(1, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            # integrate direct variables forwards in time
+            q[i] = np.dot(jac, q[i - 1])
+
+        # get objective with respect to terminal output states
+        dJdy = dJdy_fun(Y[-1])
+
+        # gradient of objective with respect to reservoir states
+        dydf = self.dydf(X[-1, :])
+        dJdf = np.dot(dJdy, dydf)
+
+        # sensitivity to initial reservoir state
+        dJdx0 = np.dot(dJdf, q[-1])
+
+        return dJdx0
+
+    def direct_sensitivity_u0(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial input u0
+        Calculated using DIRECT method
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            dJdy_fun: derivative of objective function
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdu0: direct sensitivity to the initial input u0
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize direct variables, dx(i+1)/du(0)
+        # dJ_dp doesn't depend on the initial reservoir state, i.e. q[0] = 0
+        dtanh = self.dtanh(X[1, :], X[0, :])[:, None]
+        dfdu0 = np.multiply(self.dfdu_const.toarray(), dtanh)
+        q = np.zeros((N + 1, self.N_reservoir, self.N_dim))
+        q[1] = dfdu0
+
+        for i in np.arange(2, N + 1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            # integrate direct variables forwards in time
+            q[i] = np.dot(jac, q[i - 1])
+
+        # get objective with respect to output states
+        dJdy = dJdy_fun(Y[-1])
+
+        # gradient of objective with respect to reservoir states
+        dydf = self.dydf(X[-1, :])
+        dJdf = np.dot(dJdy, dydf)
+
+        # sensitivity to parameters
+        dJdu0 = np.dot(dJdf, q[-1])
+
+        return dJdu0
 
     def adjoint_sensitivity(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
         """Sensitivity of the ESN with respect to the parameters
@@ -950,6 +1066,113 @@ class ESN:
             v[i - 1] = np.dot(jac.T, v[i]) + dJdf
 
         return dJdp
+
+    def adjoint_sensitivity_x0(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial reservoir state x0
+        Calculated using ADJOINT method
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            dJdy_fun: derivative of objective function
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdx0: adjoint sensitivity to initial reservoir state
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # integrate backwards
+        dJdy = dJdy_fun(Y[N])
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(X[N, :])
+        v[N] = np.dot(dJdy, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            # integrate adjoint variables backwards in time
+            v[i - 1] = np.dot(jac.T, v[i])
+
+        dJdx0 = v[0]
+        return dJdx0
+
+    def adjoint_sensitivity_u0(self, X, Y, N, dJdy_fun=None, N_g=None, fast_jac=False):
+        """Sensitivity of the ESN with respect to the initial input u0
+        Calculated using ADJOINT method
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            N: number of steps
+            dJdy_fun: derivative of objective function
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+
+        Returns:
+            dJdu0: adjoint sensitivity to the initial input u0
+        """
+        # reset grad attributes
+        self.reset_grad_attrs()
+
+        # if the objective is not defined the default is the acoustic energy
+        if dJdy_fun is None:
+            dJdy_fun = partial(self.dacoustic_energy, N_g=N_g)
+
+        # choose fast jacobian
+        if fast_jac == True:
+            jac_fun = lambda dtanh, x_prev: self.fast_jac(dtanh)
+        else:
+            jac_fun = lambda dtanh, x_prev: self.jac(dtanh, x_prev)
+
+        # initialize adjoint variables
+        v = np.zeros((N + 1, self.N_reservoir))
+
+        # integrate backwards
+        dJdy = dJdy_fun(Y[N])
+
+        # terminal condition,
+        # i.e. gradient of the objective at the terminal state
+        dydf = self.dydf(X[N, :])
+        v[N] = np.dot(dJdy, dydf).T
+
+        for i in np.arange(N, 0, -1):
+            dtanh = self.dtanh(X[i, :], X[i - 1, :])[:, None]
+
+            # jacobian of the reservoir dynamics
+            jac = jac_fun(dtanh, X[i - 1, :])
+
+            # integrate adjoint variables backwards in time
+            v[i - 1] = np.dot(jac.T, v[i])
+
+        dfdu0 = np.multiply(self.dfdu_const.toarray(), dtanh)
+        dJdu0 = np.dot(v[1], dfdu0)
+        return dJdu0
 
     # def adjoint_sensitivity_fast(self, X, Y, N, N_g):
     #     # precalculate
@@ -1048,3 +1271,99 @@ class ESN:
             dJdp[i] = finite_difference(J, J_right, J_left, h)
 
         return dJdp
+
+    def finite_difference_sensitivity_x0(
+        self, X, Y, P, N, h=1e-5, method="central", J_fun=None, N_g=None
+    ):
+        """Sensitivity of the ESN with respect to the initial reservoir state x0
+        Calculated using CENTRAL FINITE DIFFERENCES
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            Y:
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+            h: perturbation
+
+        Returns:
+            dJdx0: numerical sensitivity to initial reservoir state
+        """
+        # initialize sensitivity
+        dJdx0 = np.zeros((self.N_reservoir))
+
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy_inst, N_g=N_g)
+
+        # compute the energy of the base
+        J = J_fun(Y[-1, :])
+
+        # define which finite difference method to use
+        finite_difference = partial(finite_differences, method=method)
+
+        # perturbed by h
+        for i in range(self.N_reservoir):
+            x0_left = X[0, :].copy()
+            x0_left[i] -= h
+            x0_right = X[0, :].copy()
+            x0_right[i] += h
+            _, Y_left = self.closed_loop(x0_left, N, P)
+            _, Y_right = self.closed_loop(x0_right, N, P)
+            J_left = J_fun(Y_left[-1, :])
+            J_right = J_fun(Y_right[-1, :])
+
+            dJdx0[i] = finite_difference(J, J_right, J_left, h)
+
+        return dJdx0
+
+    def finite_difference_sensitivity_u0(
+        self, X, Y, P, N, h=1e-5, method="central", J_fun=None, N_g=None
+    ):
+        """Sensitivity of the ESN with respect to the initial input u0
+        Calculated using CENTRAL FINITE DIFFERENCES
+        Objective is some function of the terminal state, e.g., acoustic energy
+
+        Args:
+            X: trajectory of reservoir states around which we find the sensitivity
+            P: parameter
+            N: number of steps
+            N_g: number of galerkin modes,
+                assuming outputs are ordered such that the first 2*N_g correspond to the
+                Galerkin amplitudes
+            h: perturbation
+
+        Returns:
+            dJdu0: numerical sensitivity to the initial input u0
+        """
+        # initialize sensitivity
+        dJdu0 = np.zeros((self.N_dim))
+
+        if J_fun is None:
+            J_fun = partial(self.acoustic_energy_inst, N_g=N_g)
+
+        # compute the energy of the base
+        J = J_fun(Y[-1, :])
+
+        # define which finite difference method to use
+        finite_difference = partial(finite_differences, method=method)
+        # perturbed by h
+        for i in range(self.N_dim):
+            y0_left = Y[0, :].copy()
+            y0_left[i] -= h
+            y0_right = Y[0, :].copy()
+            y0_right[i] += h
+
+            x1_left = self.step(X[0, :], y0_left, P[0, :])
+            x1_right = self.step(X[0, :], y0_right, P[0, :])
+            _, Y_left = self.closed_loop(x1_left, N - 1, P)
+            _, Y_right = self.closed_loop(x1_right, N - 1, P)
+
+            J_left = J_fun(Y_left[-1, :])
+            J_right = J_fun(Y_right[-1, :])
+
+            dJdu0[i] = finite_difference(J, J_right, J_left, h)
+
+        return dJdu0

@@ -94,6 +94,66 @@ def true_direct_sensitivity(my_sys, t_bar, y_bar, dobjective_fun, integrator="od
     return dJdp
 
 
+def direct_ode_init(dir, t, t_bar, inv_dt, y_bar, sys):
+    """Solve the direct problem to find the gradient dJ/dy0
+    We integrate the direct equations and then the gradient dJ/dy0
+    will be computed at the end
+
+    dq/dt = -dF/dy*q
+
+    Args:
+        t: time
+        dir: [q(t)]
+             q = dy/dy0, the direct variables
+             dJ/dy0 are integrated simultaneously
+        t_bar, y_bar: base solution the system is linearized around
+        inv_dt: inverse of temporal spacing, 1/dt
+
+    Returns:
+        ddir_dt = [dq/dt]
+    """
+    # reshape the direct variables
+    q = np.reshape(dir, ((sys.N_dim, sys.N_dim)))
+    # interpolate to get the base solution at time t
+    # need interpolation since ode solver is variable step size
+    y_bar_t = equi_interp(t, t_bar, inv_dt, y_bar)
+
+    # linearize system
+    dFdy = -sys.jac(y_bar_t)
+    dFdy_q = np.matmul(dFdy, q)
+
+    # direct equations
+    dqdt = -dFdy_q
+
+    # reshape
+    dqdt = np.reshape(dqdt, (sys.N_dim * sys.N_dim,))
+    return dqdt
+
+
+def true_direct_sensitivity_init(
+    my_sys, t_bar, y_bar, dobjective_fun, integrator="odeint"
+):
+    dt = t_bar[1] - t_bar[0]
+    # tangent linear, direct problem
+    # the direct variable's dimension grows with the number of state variables
+    # important to start with identity and not jac because we're integrating
+    q0 = np.eye(my_sys.N_dim)
+    q0 = np.reshape(q0, (my_sys.N_dim * my_sys.N_dim,))
+
+    my_dir_ode = partial(direct_ode_init, sys=my_sys)
+    q = solve_ode.integrate(
+        my_dir_ode,
+        q0,
+        t_bar,
+        integrator=integrator,
+        args=(t_bar, 1 / dt, y_bar),
+    )
+    dJdy_end = dobjective_fun(y_bar[-1])
+    q_end = np.reshape(q[-1], ((my_sys.N_dim, my_sys.N_dim)))
+    dJdy0 = np.matmul(dJdy_end, q_end)
+    return dJdy0
+
+
 def adjoint_ode(adj, t, t_bar, inv_dt, y_bar, sys, dobjective_fun):
     """Solve the adjoint problem to find the gradient dJ/dp
     dq^+/dt = q^+'*dF/dy-dJ/dy
@@ -153,6 +213,56 @@ def true_adjoint_sensitivity(my_sys, t_bar, y_bar, dobjective_fun, integrator="o
     return dJdp
 
 
+def adjoint_ode_init(adj, t, t_bar, inv_dt, y_bar, sys):
+    """Solve the adjoint problem to find the gradient dJ/dy0
+    dq^+/dt = q^+'*dF/dy
+
+    Args:
+        t: time
+        adj: [q^+(t)]
+                q^+, the adjoint variables
+        t_bar, y_bar: base solution the system is linearized around
+        inv_dt: inverse of temporal spacing, 1/dt
+
+    Returns:
+        dadj_dt = [dq^+/dt]
+    """
+    q_plus = adj[0 : sys.N_dim]
+
+    # interpolate to get the base solution at time t
+    y_bar_t = equi_interp(t, t_bar, inv_dt, y_bar)
+
+    # linearize system
+    dFdy = -sys.jac(y_bar_t)
+    q_plus_dFdy = np.dot(q_plus, dFdy)
+
+    # Adjoint equations
+    # we reverse the sign because integrating backwards
+    dq_plus_dt = q_plus_dFdy
+
+    return dq_plus_dt
+
+
+def true_adjoint_sensitivity_init(
+    my_sys, t_bar, y_bar, dobjective_fun, integrator="odeint"
+):
+    dt = t_bar[1] - t_bar[0]
+    # adjoint problem
+    # the adjoint variable's dimension is always equal to the
+    # dimension of the state vector
+    adjT = dobjective_fun(y_bar[-1])  # dJdy_end
+    adj_ode = partial(adjoint_ode_init, sys=my_sys)
+    adj = solve_ode.integrate(
+        adj_ode,
+        adjT,
+        np.flip(t_bar),
+        integrator=integrator,
+        args=(t_bar, 1 / dt, y_bar),
+    )
+    dJdy0 = adj[-1]
+    return dJdy0
+
+
 def true_finite_difference_sensitivity(
     my_sys, t_bar, y_bar, h, objective_fun, method, integrator="odeint"
 ):
@@ -191,3 +301,35 @@ def true_finite_difference_sensitivity(
         setattr(my_sys, param_name, current_param)
 
     return dJdp
+
+
+def true_finite_difference_sensitivity_init(
+    my_sys, t_bar, y_bar, h, objective_fun, method, integrator="odeint"
+):
+    # Calculate numerically
+    # Find perturbed solutions
+    dJdy0 = np.zeros((my_sys.N_dim,))
+
+    # define which finite difference method to use
+    finite_difference = partial(finite_differences, method=method)
+
+    J = objective_fun(y_bar[-1, :])
+    for x_idx in range(my_sys.N_dim):
+        # perturb from the left
+        y0_left = y_bar[0, :].copy()
+        y0_left[x_idx] -= h
+        y_bar_left = solve_ode.integrate(
+            my_sys.ode, y0_left, t_bar, integrator=integrator
+        )
+        J_left = objective_fun(y_bar_left[-1, :])
+        y0_right = y_bar[0, :].copy()
+        y0_right[x_idx] += h
+        y_bar_right = solve_ode.integrate(
+            my_sys.ode, y0_right, t_bar, integrator=integrator
+        )
+        J_right = objective_fun(y_bar_right[-1, :])
+
+        # compute the gradient by finite difference
+        dJdy0[x_idx] = finite_difference(J, J_right, J_left, h)
+
+    return dJdy0

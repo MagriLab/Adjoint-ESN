@@ -20,6 +20,7 @@ from adjoint_esn.utils.enums import eParam
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
+plt.style.use("dark_background")
 
 save_fig = True
 fig_name = "sensitivity"
@@ -28,16 +29,16 @@ model_path = Path("final_results/rijke/run_20231029_153121")
 
 # not same washout, eta_1_init = 1.5
 save_paths_beta = [
-    "20231219_022703",  # tau = 0.07
-    "20231218_210035",  # tau = 0.12
+    # "20231219_022703",  # tau = 0.07
+    # "20231218_210035",  # tau = 0.12
     "20231219_015234",  # tau = 0.22
-    "20231219_031239",  # tau = 0.32
+    # "20231219_031239",  # tau = 0.32
 ]
 save_paths_tau = [
-    "20231218_201438",  # beta = 1.25
-    "20231218_215207",  # beta = 2.5
+    # "20231218_201438",  # beta = 1.25
+    # "20231218_215207",  # beta = 2.5
     "20231218_194028",  # beta = 3.75
-    "20231218_193704",  # beta = 4.5
+    # "20231218_193704",  # beta = 4.5
 ]
 
 true_color = cmap(0)
@@ -54,7 +55,8 @@ pred_ms = 8
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
 
-fig = plt.figure(figsize=(15, 6), constrained_layout=True)
+# fig = plt.figure(figsize=(15, 6), constrained_layout=True)
+fig = plt.figure(figsize=(6, 6), constrained_layout=True)
 
 # print model properties
 config = post.load_config(model_path)
@@ -104,7 +106,7 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         # ax = plt.subplot(len(save_paths), 2, k + 1 + 2 * j)
         # ax.set_title(titles[k + 2 * j], loc="left")
         ax = plt.subplot(2, len(save_paths), j + 1 + len(save_paths) * k)
-        ax.set_title(titles[j + len(save_paths) * k], loc="left")
+        # ax.set_title(titles[j + len(save_paths) * k], loc="left")
         vis.plot_lines(
             p_list[:, eParam[vary_param]],
             sens_results["dJdp"]["true"]["adjoint"][:, i],
@@ -131,7 +133,8 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         if j == 0:
             plt.ylabel(f"$dJ/d\\{i.name}$")
         if j == 0 and k == 0:
-            plt.legend(["True", "ESN"], loc="upper left")
+            # plt.legend(["True", "ESN"], loc="upper left")
+            plt.legend(["True", "ESN"], loc="lower center")
         # if j == 0 and k == 1:
         #     plt.legend(["True", "ESN"], loc="upper right")
 
@@ -143,6 +146,8 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         ax.grid(visible=True)
 
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight", dpi=300)
-    fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
+    fig.savefig(
+        f"paper/graphics_ppt/figure_{fig_name}_black.png", bbox_inches="tight", dpi=300
+    )
+    # fig.savefig(f"paper/graphics_ppt/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()

@@ -22,11 +22,11 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
-
+plt.style.use("dark_background")
 figure_size = (15, 4)
 
-save_fig = False
-fig_name = "lco1"
+save_fig = True
+fig_name = "chaotic1"
 
 model_paths = [
     Path(
@@ -382,6 +382,6 @@ vis.plot_asd(
 )
 ax.annotate(titles[1][2], xy=(0.03, 0.85), xycoords="axes fraction")
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
-    fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
+    fig.savefig(f"paper/graphics_ppt/figure_{fig_name}_black.png", bbox_inches="tight")
+    # fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()

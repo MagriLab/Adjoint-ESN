@@ -88,7 +88,14 @@ def plot_lorenz63_attractor(fig, U, U_pred, length, colors, animate=False, legen
     ax1.dist = 10
     ax1.set_box_aspect([1, 1, 1.1])
     plt.tight_layout()
-    # plt.grid()
+    plt.grid(False)
+    ax1.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax1.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax1.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    # make the grid lines transparent
+    ax1.xaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+    ax1.yaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+    ax1.zaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
 
     ax2 = fig.add_subplot(1, 2, 2, projection="3d")
     ax2.set_xlabel("$x$", labelpad=15)
@@ -106,7 +113,14 @@ def plot_lorenz63_attractor(fig, U, U_pred, length, colors, animate=False, legen
     ax2.dist = 10
     ax2.set_box_aspect([1, 1, 1.1])
     plt.tight_layout()
-    # plt.grid()
+    plt.grid(False)
+    ax2.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax2.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax2.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    # make the grid lines transparent
+    ax2.xaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+    ax2.yaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+    ax2.zaxis._axinfo["grid"]["color"] = (1, 1, 1, 0)
 
     if legend:
         ax1.legend(legend, loc="upper right", fontsize=14)

@@ -546,3 +546,71 @@ class Rijke:
 
         dadj_dt = np.hstack([dq_plus_dt, dL_dbeta_dt, dL_dtau_dt])
         return dadj_dt
+
+    def direct_ode_init(self, dir, t, t_bar, inv_dt, y_bar):
+        """Solve the direct problem to find the gradient dJ/dy0
+        We integrate the direct equations and then the gradient dJ/dy0
+        will be computed at the end
+
+        dq/dt = -dF/dy*q
+
+        Args:
+            t: time
+            dir: q(t)
+                 q = dy/dp, the direct variables
+            t_bar, y_bar: base solution the system is linearized around
+            inv_dt: inverse of temporal spacing, 1/dt
+
+        Returns:
+            dq/dt
+        """
+        # number of direct variables increase with the parameters
+        q = np.reshape(dir, ((self.N_dim, self.N_dim)))
+
+        # interpolate to get the base solution at time t
+        # need interpolation since ode solver is variable step size
+        y_bar_t = self.equi_interp(t, t_bar, inv_dt, y_bar)
+        v_bar = y_bar_t[2 * self.N_g : self.N_dim]
+
+        u_f_tau_bar = v_bar[-1]
+
+        # linearize system around \bar{u_f}(t-\tau)
+        dFdy = self.dFdy_u_f_tau_bar(u_f_tau_bar)
+
+        # Direct equations
+        dqdt = -np.matmul(dFdy, q)
+
+        # reshape
+        dqdt = np.reshape(dqdt, (self.N_dim * self.N_dim,))
+        return dqdt
+
+    def adjoint_ode_init(self, adj, t, t_bar, inv_dt, y_bar):
+        """Solve the adjoint problem to find the gradient dJ/dy0
+        dq^+/dt = q^+'*dF/dy
+
+        Args:
+            t: time
+            adj: [q^+(t)]
+                 q^+, the adjoint variables
+            t_bar, y_bar: base solution the system is linearized around
+            inv_dt: inverse of temporal spacing, 1/dt
+
+        Returns:
+            dq^+/dt
+        """
+        q_plus = adj[0 : self.N_dim]
+
+        # interpolate to get the base solution at time t
+        y_bar_t = self.equi_interp(t, t_bar, inv_dt, y_bar)
+        v_bar = y_bar_t[2 * self.N_g : self.N_dim]
+
+        u_f_tau_bar = v_bar[-1]
+
+        # linearize system around \bar{u_f}(t-\tau)
+        dFdy = self.dFdy_u_f_tau_bar(u_f_tau_bar)
+        q_plus_dFdy = np.dot(q_plus, dFdy)
+
+        # Adjoint equations
+        dq_plus_dt = q_plus_dFdy
+
+        return dq_plus_dt

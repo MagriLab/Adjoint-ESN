@@ -20,6 +20,7 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 # figure options
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
 rc("text", usetex=True)
+plt.style.use("dark_background")
 save_fig = True
 use_cv = False
 figure_name = "2"
@@ -190,7 +191,7 @@ for i, param in enumerate(param_vars):
         sens_results[f"{param}_list"],
         J_true_mean,
         J_esn_mean,
-        J_approx,
+        # J_approx,
         linestyle=[true_ls, pred_ls, direct_ls],
         linewidth=[true_lw, pred_lw, direct_lw],
         color=[true_color, pred_color, direct_color],
@@ -203,11 +204,13 @@ for i, param in enumerate(param_vars):
     ax = plt.gca()
     ax.set_xticklabels([])
     ax.xaxis.set_major_locator(MultipleLocator(xticks[eParam[param]]))
-    ax.annotate(titles[i], xy=(0.85, 0.85), xycoords="axes fraction")
+    # ax.annotate(titles[i], xy=(0.85, 0.85), xycoords="axes fraction")
 
-    if i == 0:
-        legend_str = ["True", "ESN", "Polyfit"]
-        plt.legend(legend_str, loc="lower right")
+    if i == 1:
+        # legend_str = ["True", "ESN", "Polyfit"]
+        legend_str = ["True", "ESN"]
+        # plt.legend(legend_str, loc="lower right")
+        plt.legend(legend_str, loc="upper left")
 
     plt.subplot(2, len(param_vars), i + 4)
     vis.plot_lines(
@@ -215,7 +218,7 @@ for i, param in enumerate(param_vars):
         dJdp_true_mean[:, eParam[param], 0],
         dJdp_esn_mean[:, eParam[param], 0],
         # direct_results["dJdp"],
-        dJdp_approx,
+        # dJdp_approx,
         linestyle=[true_ls, pred_ls, direct_ls],
         linewidth=[true_lw, pred_lw, direct_lw],
         color=[true_color, pred_color, direct_color],
@@ -227,12 +230,14 @@ for i, param in enumerate(param_vars):
     plt.ylim(ylims_sens[eParam[param]])
     ax = plt.gca()
     ax.xaxis.set_major_locator(MultipleLocator(xticks[eParam[param]]))
-    ax.annotate(titles[3 + i], xy=(0.85, 0.85), xycoords="axes fraction")
+    # ax.annotate(titles[3 + i], xy=(0.85, 0.85), xycoords="axes fraction")
 
     # if i == 2:
     #     legend_str = ["True Adjoint", "ESN Adjoint", "Approx."]
     #     plt.legend(legend_str, loc='upper right')
 if save_fig:
-    fig.savefig(f"local_images/figure_{figure_name}.png", bbox_inches="tight", dpi=300)
+    fig.savefig(
+        f"local_images/figure_{figure_name}_black.png", bbox_inches="tight", dpi=300
+    )
     # fig.savefig(f"paper_chaotic/graphics/figure_{figure_name}.pdf", bbox_inches="tight")
 plt.show()

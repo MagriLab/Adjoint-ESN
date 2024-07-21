@@ -5,7 +5,17 @@ import numpy as np
 
 # user-defined color maps
 discrete_dict = {
-    "defne": ["#03BDAB", "#FEAC16", "#5D00E6", "#F2BCF3", "#AFEEEE", "#E92C91"]
+    "defne": ["#03BDAB", "#FEAC16", "#5D00E6", "#F2BCF3", "#AFEEEE", "#E92C91"],
+    "aqua": [
+        "#f7fcf0",
+        "#ccebc5",
+        "#7bccc4",
+        "#4eb3d3",
+        "#2b8cbe",
+        "#08589e",
+        "#1b3f87",
+        "#18347a",
+    ],
 }
 continuous_dict = {
     "defne": ["#03BDAB", "#FEAC16", "#5D00E6"],
