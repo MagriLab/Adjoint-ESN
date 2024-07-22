@@ -130,7 +130,7 @@ def load_data(
         # solve ODE using odeint
         y = solve_ode.integrate(my_rijke.ode, y0, t, integrator)
 
-    return y, t
+    return y[:, : 2 * N_g + 10], t
 
 
 def create_state(y, N_g, include, N_c=10, u_f_order=0, N_tau=0):
