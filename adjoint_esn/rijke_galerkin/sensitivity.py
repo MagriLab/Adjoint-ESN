@@ -20,7 +20,10 @@ def acoustic_energy(y, N_g):
 
 
 def acoustic_energy_inst(y, N_g):
-    return 1 / 4 * (np.sum(y[: 2 * N_g] ** 2))
+    if y.ndim == 1:
+        return 1 / 4 * (np.sum(y[: 2 * N_g] ** 2))
+    elif y.ndim == 2:
+        return 1 / 4 * (np.sum(y[:, : 2 * N_g] ** 2, axis=1))
 
 
 def dacoustic_energy_inst(Y, N_g):

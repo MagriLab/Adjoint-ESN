@@ -24,12 +24,16 @@ cmap = cm.create_custom_colormap(type="discrete")
 save_fig = True
 fig_name = "sensitivity_noisy_v2"
 # N_reservoir = 1200, connectivity = 20
+which_idx = [0, 2, 3]
+order_idx = [0, 2, 1]
+
 model_paths = [
-    Path("final_results/rijke/run_20231029_153121_noise_5"),
-    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_5"),
-    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_3"),
-    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2"),
+    Path("final_results/rijke/run_20231029_153121_noise_5"),  # 0
+    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_5"),  # 1
+    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_3"),  # 2
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2"),  # 3
 ]
+model_paths = [model_paths[idx] for idx in which_idx]
 
 # not same washout, eta_1_init = 1.5
 save_paths_beta = [
@@ -84,6 +88,35 @@ save_paths_tau = [
         "20240707_215025",
     ],  # beta = 4.5
 ]
+save_paths_beta = [
+    [save_paths_beta[res_idx][idx] for idx in which_idx] for res_idx in range(4)
+]
+save_paths_tau = [
+    [save_paths_tau[res_idx][idx] for idx in which_idx] for res_idx in range(4)
+]
+
+# reorder
+model_paths = [model_paths[idx] for idx in order_idx]
+save_paths_beta = [
+    [save_paths_beta[res_idx][idx] for idx in order_idx] for res_idx in range(4)
+]
+save_paths_tau = [
+    [save_paths_tau[res_idx][idx] for idx in order_idx] for res_idx in range(4)
+]
+
+# add legend
+legend_str = ["True"]
+legend_str_lambda = [
+    "$\lambda = 10^{-6}$",
+    "$\lambda = 10^{-5}$",
+    "$\lambda = 10^{-4}$",
+    "$\lambda = 10^{-3}$",
+    "$\lambda = 10^{-2}$",
+    "$\lambda = 10^{-1}$",
+]
+legend_str_lambda = [legend_str_lambda[idx] for idx in which_idx]
+[legend_str.append(legend_str_lambda[idx]) for idx in order_idx]
+
 
 true_color = cmap(0)
 true_lw = 5.0
@@ -98,13 +131,6 @@ true_ms = 6
 pred_mss = [8, 8, 8, 8]
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
-legend_str = [
-    "True",
-    "$\lambda = 10^{-6}$",
-    "$\lambda = 10^{-5}$",
-    "$\lambda = 10^{-3}$",
-    "$\lambda = 10^{-2}$",
-]
 
 fig = plt.figure(figsize=(15, 6), constrained_layout=True)
 

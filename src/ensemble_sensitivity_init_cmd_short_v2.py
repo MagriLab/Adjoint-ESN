@@ -336,7 +336,7 @@ def main(args):
                 J["true"][p_idx, loop_idx, loop_time_idx] = sens.acoustic_energy_inst(
                     y_bar[-1, :], N_g
                 )
-                if loop_idx % 1 == 0:
+                if loop_idx % 5 == 0:
                     print(f"Loop {loop_idx}")
                     print(
                         f'True dJ/du0, {method_name} = {dJdu0["true"][method_name][p_idx, :, loop_idx, loop_time_idx]}',
@@ -445,14 +445,14 @@ def main(args):
                             esn_idx, p_idx, loop_idx, loop_time_idx
                         ] = sens.acoustic_energy_inst(y_pred_loop[-1, :], N_g)
 
-                        if loop_idx % 1 == 0:
+                        if loop_idx % 5 == 0:
                             print(f"Loop {loop_idx}", flush=True)
                             print(
-                                f'ESN {esn_idx} dJ/du0, {method_name} = {dJdu0["esn"][method_name][esn_idx,p_idx,:,loop_idx, loop_time_idx]}',
+                                f'ESN {esn_idx} dJ/du0, {method_name} = {dJdu0["esn"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
                                 flush=True,
                             )
                             print(
-                                f'ESN {esn_idx} dJ/du0 from dJ/dx0, {method_name} = {dJdu0["esn_from_x0"][method_name][esn_idx,p_idx,:,loop_idx, loop_time_idx]}',
+                                f'ESN {esn_idx} dJ/du0 from dJ/dx0, {method_name} = {dJdu0["esn_from_x0"][method_name][esn_idx,p_idx,:,loop_idx,loop_time_idx]}',
                                 flush=True,
                             )
                             print(

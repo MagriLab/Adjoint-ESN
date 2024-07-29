@@ -21,16 +21,20 @@ from adjoint_esn.utils.enums import eParam
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 
-save_fig = False
-fig_name = "sensitivity_noisy_v2"
+save_fig = True
+fig_name = "sensitivity_noisy_new"
 # N_reservoir = 1200, connectivity = 20
+which_idx = [0, 3, 5]
+order_idx = [0, 2, 1]
+
 model_paths = [
-    Path("local_results/rijke/run_20231029_153121_noise_5_new"),
-    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_5_new"),
-    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_4_new"),
-    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_3_new"),
-    # Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2_new"),
+    Path("local_results/rijke/run_20231029_153121_noise_5_new"),  # 0
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_5_new"),  # 1
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_4_new"),  # 2
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_3_new"),  # 3
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2_new"),  # 4
 ]
+model_paths = [model_paths[idx] for idx in which_idx]
 
 # not same washout, eta_1_init = 1.5
 save_paths_beta = [
@@ -39,28 +43,28 @@ save_paths_beta = [
         "20240710_051649",
         "20240710_032951",
         "20240710_035016",
-        #  "20240710_032138"
+        "20240710_032138",
     ],  # tau = 0.07
     [
         "20240710_035629",
         "20240709_235618",
         "20240710_012323",
         "20240710_005057",
-        #  "20240709_232428"
+        "20240709_232428",
     ],  # tau = 0.12
     [
         "20240710_231024",
         "20240711_021355",
         "20240710_210901",
         "20240710_231720",
-        # "20240710_230535",
+        "20240710_230535",
     ],  # tau = 0.22
     [
         "20240712_045225",
         "20240710_214532",
         "20240711_014752",
         "20240710_225231",
-        # "20240710_233823",
+        "20240710_233823",
     ],  # tau = 0.32
 ]
 save_paths_tau = [
@@ -69,51 +73,72 @@ save_paths_tau = [
         "20240711_212748",
         "20240711_212058",
         "20240710_174654",
-        # "20240710_171922",
+        "20240710_171922",
     ],  # beta = 1.25
     [
         "20240710_214316",
         "20240710_223322",
         "20240710_222132",
         "20240710_215253",
-        #  "20240710_215637",
+        "20240710_215637",
     ],  # beta = 2.5
     [
         "20240711_221213",
         "20240711_220112",
         "20240712_122355",
         "20240712_114840",
-        # "20240712_122600"
+        "20240712_122600",
     ],  # beta = 3.75
     [
         "20240712_122909",
         "20240712_125927",
         "20240712_224507",
         "20240712_221041",
-        # "20240712_224509"
+        "20240712_224509",
     ],  # beta = 4.5
 ]
+save_paths_beta = [
+    [save_paths_beta[res_idx][idx] for idx in which_idx] for res_idx in range(4)
+]
+save_paths_tau = [
+    [save_paths_tau[res_idx][idx] for idx in which_idx] for res_idx in range(4)
+]
+
+# reorder
+model_paths = [model_paths[idx] for idx in order_idx]
+save_paths_beta = [
+    [save_paths_beta[res_idx][idx] for idx in order_idx] for res_idx in range(4)
+]
+save_paths_tau = [
+    [save_paths_tau[res_idx][idx] for idx in order_idx] for res_idx in range(4)
+]
+
+# add legend
+legend_str = ["True"]
+legend_str_lambda = [
+    "$\lambda = 10^{-6}$",
+    "$\lambda = 10^{-5}$",
+    "$\lambda = 10^{-4}$",
+    "$\lambda = 10^{-3}$",
+    "$\lambda = 10^{-2}$",
+    "$\lambda = 10^{-1}$",
+]
+legend_str_lambda = [legend_str_lambda[idx] for idx in which_idx]
+[legend_str.append(legend_str_lambda[idx]) for idx in order_idx]
 
 true_color = cmap(0)
 true_lw = 5.0
 true_ls = "-"
-pred_colors = [cmap(4), cmap(1), cmap(2), cmap(5)]
-pred_lws = [2.5, 2.5, 2.5, 2.5]
-pred_lss = ["-", "--", "-.", ":"]
+pred_colors = [cmap(4), cmap(1), cmap(2)]
+pred_lws = [2.5, 2.5, 2.5]
+pred_lss = ["-", "--", "-."]
 
 true_marker = "none"
-pred_markers = ["none", "none", "none", "none"]
+pred_markers = ["none", "none", "none"]
 true_ms = 6
-pred_mss = [8, 8, 8, 8]
+pred_mss = [8, 8, 8]
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
-legend_str = [
-    "True",
-    "$\lambda = 10^{-6}$",
-    "$\lambda = 10^{-5}$",
-    "$\lambda = 10^{-3}$",
-    "$\lambda = 10^{-2}$",
-]
 
 fig = plt.figure(figsize=(15, 6), constrained_layout=True)
 
@@ -206,5 +231,5 @@ plt.figlegend(
 )
 if save_fig:
     fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight", dpi=300)
-    fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
+    # fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()
