@@ -18,25 +18,25 @@ from adjoint_esn.utils.enums import get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 
-save_fig = True
+save_fig = False
 figsize = (10, 6)
 fig_name = 2
 
 model_paths = [
-    Path("local_results/rijke/run_20231029_153121"),
-    Path("local_results/rijke/run_20231029_153121"),
+    # Path("local_results/rijke/run_20231029_153121"),
+    # Path("local_results/rijke/run_20231029_153121"),
     Path("local_results/rijke/run_20240307_175258"),
-    Path("local_results/rijke/run_20240307_175258"),
-    Path("local_results/rijke/run_20240307_175258"),
+    # Path("local_results/rijke/run_20240307_175258"),
+    # Path("local_results/rijke/run_20240307_175258"),
 ]
 res_names = [
-    "20240722_154443",  # limit cycle beta = 2.0, tau = 0.25
-    "20240723_001904",  # limit cycle beta = 4.5, tau = 0.12
+    # "20240722_154443",  # limit cycle beta = 2.0, tau = 0.25
+    # "20240723_001904",  # limit cycle beta = 4.5, tau = 0.12
     "20240722_190017",  # quasiperiodic beta = 6.1, tau = 0.2
-    "20240722_155920",  # chaotic beta = 7.6, tau = 0.22
-    "20240722_204116",  # chaotic beta = 8.7, tau = 0.23
+    # "20240722_155920",  # chaotic beta = 7.6, tau = 0.22
+    # "20240722_204116",  # chaotic beta = 8.7, tau = 0.23
 ]
-LTs = [1.0, 1.0, 1.0, 8.5, 3.9]
+LTs = [1.0, 1.0, 8.5, 3.9]
 
 config = post.load_config(model_paths[0])
 N_g = config.simulation.N_g

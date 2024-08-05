@@ -5,8 +5,8 @@ font.serif : [Computer Modern]
 figure.constrained_layout.use: True
 savefig.format: pdf
 
-xtick.labelsize: small
-ytick.labelsize: small
+xtick.labelsize: 16
+ytick.labelsize: 16
 xtick.direction : inout
 ytick.direction : inout
 xtick.major.size : 5

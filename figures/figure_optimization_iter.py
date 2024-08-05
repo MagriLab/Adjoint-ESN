@@ -21,7 +21,7 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
-plt.style.use("dark_background")
+# plt.style.use("dark_background")
 
 save_fig = True
 model_path = Path("final_results/rijke/run_20231029_153121")  # rijke with reservoir
@@ -37,7 +37,7 @@ test_loop_names = ["short", "long"]
 
 eta_1_init = 1.5
 
-figure_size = (15, 2)
+figure_size = (15, 2.5)
 
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
@@ -290,8 +290,8 @@ for p_idx, p in enumerate(p_hist):
         xlabel=f"$\{plt_idx_pairs[0][0].name}$",
         ylabel=f"$\{plt_idx_pairs[0][1].name}$",
     )
-    ax1.set_xlim([-7.5, 7.5])
-    ax1.set_ylim([-7.5, 7.5])
+    ax1.set_xlim([-7.8, 7.8])
+    ax1.set_ylim([-7.8, 7.8])
     ax1.annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
     tt += 1
 
@@ -339,17 +339,25 @@ for p_idx, p in enumerate(p_hist):
         linewidth=[true_lw, pred_lw],
         color=[true_color, pred_color],
     )
-    ax3.legend(["True", "ESN"], loc="upper right")
+    # ax3.legend(["True", "ESN"], loc="upper right")
     ax3.annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
     tt += 1
-
+    if iter_idx[p_idx] == 0:
+        legend_str = ["True", "ESN"]
+        plt.figlegend(
+            legend_str,
+            loc="upper right",
+            ncols=len(legend_str),
+            bbox_to_anchor=(1.0, 1.1),
+        )
+    fig.suptitle(f"Iteration {iter_idx[p_idx]}", x=0.11)
     if save_fig:
         fig.savefig(
-            f"paper/graphics_ppt/figure_{fig_name}_iter_{iter_idx[p_idx]}_black.png",
+            f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.png",
             bbox_inches="tight",
         )
-        # fig.savefig(
-        #     f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.pdf",
-        #     bbox_inches="tight",
-        # )
+        fig.savefig(
+            f"paper/graphics/figure_{fig_name}_iter_{iter_idx[p_idx]}.pdf",
+            bbox_inches="tight",
+        )
 plt.show()

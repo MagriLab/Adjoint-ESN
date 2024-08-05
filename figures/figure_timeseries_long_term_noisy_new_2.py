@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import rc
+from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
@@ -23,7 +24,7 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 
-figure_size = (15, 4)
+figure_size = (15, 4.5)
 
 save_fig = True
 fig_name = "lco1_noisy"
@@ -108,11 +109,11 @@ train_lw = 1.0
 train_ls = "None"
 
 true_color = cmap(0)
-true_lw = 4.5
+true_lw = 5.0
 true_ls = "-"
 
 pred_colors = [cmap(4), cmap(1), cmap(2)]
-pred_lws = [2.5, 2.0, 1.5]
+pred_lws = [2.5, 2.5, 2.5]
 pred_lss = ["-", "--", "-."]
 
 linespecs = {
@@ -219,6 +220,8 @@ for i in range(len(plt_idx)):
         **linespecs,
     )
     ax.annotate(titles[i][0], xy=(0.012, 0.85), xycoords="axes fraction")
+    ax.xaxis.set_major_locator(MultipleLocator(2.5))
+
     # Plot phase plot
     ax1 = subfigs[1].add_subplot(len(plt_idx) + 1, 1, i + 1)
     phase_space_steps = pp.get_steps(2.0, network_dt)
@@ -259,7 +262,8 @@ vis.plot_lines(
     ylabel="$E_{ac}$",
     **linespecs,
 )
-ax.annotate(titles[2][0], xy=(0.012, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][0], xy=(0.012, 0.85), xycoords="axes fraction")
+ax.xaxis.set_major_locator(MultipleLocator(2.5))
 
 # LONG-TERM STATISTICS
 # Plot statistics
@@ -289,7 +293,7 @@ vis.plot_statistics_ensemble(
     ylabel="PDF",
     **linespecs,
 )
-ax.annotate(titles[2][1], xy=(0.012, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][1], xy=(0.012, 0.85), xycoords="axes fraction")
 
 # AMPLITUDE SPECTRUM
 # Plot amplitude spectrum
@@ -345,8 +349,20 @@ for i in range(len(plt_idx)):
     )
     plt.yscale("log")
     plt.ylim([1e-5, 10])
-plt.figlegend(
+
+legend = plt.figlegend(
     legend_str, loc="upper center", ncols=len(legend_str), bbox_to_anchor=(0.5, 1.15)
+)
+handles = legend.get_lines()
+handles = [handles[idx] for idx in [0, 1, 2, 4, 3]]
+labels = [legend_str[idx] for idx in [0, 1, 2, 4, 3]]
+# reorder legend
+plt.figlegend(
+    handles,
+    labels,
+    loc="upper center",
+    ncols=len(legend_str),
+    bbox_to_anchor=(0.5, 1.15),
 )
 
 ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
@@ -377,7 +393,7 @@ vis.plot_asd(
     alpha=0.8,
     **linespecs,
 )
-ax.annotate(titles[2][2], xy=(0.012, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][2], xy=(0.012, 0.85), xycoords="axes fraction")
 
 if save_fig:
     fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")

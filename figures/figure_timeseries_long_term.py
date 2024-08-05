@@ -22,11 +22,12 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
-plt.style.use("dark_background")
-figure_size = (15, 4)
+# plt.style.use("dark_background")
+# figure_size = (15, 4)
+figure_size = (15, 2.5)
 
 save_fig = True
-fig_name = "chaotic1"
+fig_name = "chaotic2"
 
 model_paths = [
     Path(
@@ -41,7 +42,8 @@ if fig_name == "lco1":
     beta = 2.0
     tau = 0.25
     periodic = True
-    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    # titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    titles = [["(a)", "(b)", "(c)"]]
     LT = 1.0
     t_label = "$t$"
     model_paths = [model_paths[0]]
@@ -56,7 +58,8 @@ elif fig_name == "lco2":
     beta = 4.5
     tau = 0.12
     periodic = True
-    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    # titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    titles = [["(d)", "(e)", "(f)"]]
     LT = 1.0
     t_label = "$t$"
     model_paths = [model_paths[0]]
@@ -71,7 +74,8 @@ elif fig_name == "period_double":
     beta = 7.5
     tau = 0.3
     periodic = True
-    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    # titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    titles = [["(a)", "(b)", "(c)"]]
     LT = 1.0
     t_label = "$t$"
     ts_path_str = "timeseries_beta_7_50_tau_0_30_results"
@@ -91,7 +95,8 @@ elif fig_name == "quasi":
     beta = 6.1
     tau = 0.2
     periodic = False
-    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    # titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    titles = [["(d)", "(e)", "(f)"]]
     LT = 1.0
     t_label = "$t$"
     ts_path_str = "timeseries_beta_6_10_tau_0_20_results"
@@ -111,7 +116,8 @@ elif fig_name == "chaotic1":
     beta = 7.6
     tau = 0.22
     periodic = False
-    titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    # titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
+    titles = [["(a)", "(b)", "(c)"]]
     LT = 8.5
     t_label = "$t [LT]$"
     model_paths = model_paths
@@ -132,7 +138,8 @@ elif fig_name == "chaotic2":
     beta = 8.7
     tau = 0.23
     periodic = False
-    titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    # titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
+    titles = [["(d)", "(e)", "(f)"]]
     LT = 3.9
     t_label = "$t [LT]$"
     model_paths = model_paths
@@ -171,8 +178,8 @@ elif fig_name in fig2_names:
         "$\\beta_{\mathrm{train}}=[6,8]$",
     ]
     pred_colors = [cmap(1), cmap(2)]
-    pred_lws = [2.5, 1.5]
-    pred_lss = ["-", "--"]
+    pred_lws = [2.5, 2.5]
+    pred_lss = ["--", "-."]
 
 linespecs = {
     "linestyle": [true_ls, *pred_lss],
@@ -190,7 +197,7 @@ N_g = config.simulation.N_g
 eInputVar = get_eVar(input_vars, N_g)
 eOutputVar = get_eVar(output_vars, N_g)
 
-plt_idx = [eOutputVar.mu_1]
+plt_idx = []  # eOutputVar.mu1
 
 Y_PRED_SHORT = [None] * len(model_paths)
 Y_PRED_LONG = [None] * len(model_paths)
@@ -262,7 +269,7 @@ for i in range(len(plt_idx)):
         ylabel=f"$\{plt_idx[i].name}$",
         **linespecs,
     )
-    ax.annotate(titles[0][0], xy=(0.015, 0.85), xycoords="axes fraction")
+    ax.annotate(titles[i][0], xy=(0.015, 0.85), xycoords="axes fraction")
 
 for model_idx in range(1):
     error_measure = errors.rel_L2
@@ -284,7 +291,7 @@ vis.plot_lines(
     ylabel="$E_{ac}$",
     **linespecs,
 )
-ax.annotate(titles[1][0], xy=(0.015, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][0], xy=(0.015, 0.85), xycoords="axes fraction")
 
 # LONG-TERM STATISTICS
 # Plot statistics
@@ -300,7 +307,7 @@ for i in range(len(plt_idx)):
         ylabel="PDF",
         **linespecs,
     )
-    ax.annotate(titles[0][1], xy=(0.03, 0.85), xycoords="axes fraction")
+    ax.annotate(titles[i][1], xy=(0.03, 0.85), xycoords="axes fraction")
 
 # Plot statistics of acoustic energy
 ax = subfigs[1].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
@@ -314,7 +321,7 @@ vis.plot_statistics_ensemble(
     ylabel="PDF",
     **linespecs,
 )
-ax.annotate(titles[1][1], xy=(0.03, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][1], xy=(0.03, 0.85), xycoords="axes fraction")
 
 # AMPLITUDE SPECTRUM
 # Plot amplitude spectrum
@@ -339,7 +346,7 @@ for i in range(len(plt_idx)):
                 remove_mean=True,
                 periodic=periodic,
             )
-    ax.annotate(titles[0][2], xy=(0.03, 0.85), xycoords="axes fraction")
+    ax.annotate(titles[i][2], xy=(0.03, 0.85), xycoords="axes fraction")
     vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
         asd_y=[AS_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
         omega_y=[OMEGA_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
@@ -351,7 +358,7 @@ for i in range(len(plt_idx)):
         **linespecs,
         alpha=0.8,
     )
-    plt.legend(legend_str, loc="upper right", handlelength=1.0, handletextpad=0.5)
+    # plt.legend(legend_str, loc="upper right", handlelength=1.0, handletextpad=0.5)
 ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
 omega, amp_spec = signals.get_amp_spec(
     network_dt,
@@ -380,8 +387,13 @@ vis.plot_asd(
     alpha=0.8,
     **linespecs,
 )
-ax.annotate(titles[1][2], xy=(0.03, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][2], xy=(0.03, 0.85), xycoords="axes fraction")
+if fig_name == "lco1" or fig_name == "period_double" or fig_name == "chaotic1":
+    plt.figlegend(
+        legend_str, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.1)
+    )
+fig.suptitle(f"$\\beta = {beta}, \; \\tau = {tau}$", x=0.11)
 if save_fig:
-    fig.savefig(f"paper/graphics_ppt/figure_{fig_name}_black.png", bbox_inches="tight")
-    # fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()

@@ -232,7 +232,7 @@ def main(args):
         regime_str = f'beta = {p_sim["beta"]}, tau = {p_sim["tau"]}'
         print("Regime:", regime_str)
 
-        test_sim_time = start_time + max(test_loop_time_arr) + test_transient_time
+        test_sim_time = start_time + test_washout_time + test_transient_time
 
         # set up the initial conditions
         y0 = np.zeros((1, DATA["train"]["u_washout"][0].shape[1]))
@@ -252,8 +252,6 @@ def main(args):
             integrator=integrator,
             y_init=y0_sim,
         )
-
-        start_idx = pp.get_steps(start_time, network_dt)
 
         my_rijke = Rijke(
             N_g=N_g,
@@ -302,7 +300,6 @@ def main(args):
                     N_g=N_g,
                     u_f_order=u_f_order,
                     tau=p_sim["tau"],
-                    start_idxs=[start_idx],
                 )
 
                 # remove the washout before sensitivity computation

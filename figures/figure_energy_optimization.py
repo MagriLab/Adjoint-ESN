@@ -14,7 +14,7 @@ from adjoint_esn.utils import custom_colormap as cm
 from adjoint_esn.utils import preprocessing as pp
 
 plt.style.use("src/stylesheet.mplstyle")
-plt.style.use("dark_background")
+# plt.style.use("dark_background")
 
 save_fig = True
 plot_optimization = True
@@ -44,8 +44,8 @@ cmap = cm.create_custom_colormap(
 )
 
 # titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
-# figure_size = (15, 6)
-figure_size = (10, 4)
+figure_size = (15, 6)
+# figure_size = (10, 4)
 fig = plt.figure(figsize=figure_size, constrained_layout=True)
 
 # print model properties
@@ -169,7 +169,7 @@ ax[1].annotate("(b)", xy=(-0.1, 0.95), xycoords="axes fraction")
 ax[1].grid()
 
 if save_fig:
-    fig.savefig(f"paper/graphics_ppt/figure_energy_grid_opt_black.png")
-    # fig.savefig("paper/graphics/figure_energy_grid.pdf")
+    fig.savefig("paper/graphics/figure_energy_grid.png")
+    fig.savefig("paper/graphics/figure_energy_grid.pdf")
 
 plt.show()

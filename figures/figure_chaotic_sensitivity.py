@@ -16,7 +16,7 @@ from adjoint_esn.utils import visualizations as vis
 from adjoint_esn.utils.enums import eParam
 
 plt.style.use("src/stylesheet.mplstyle")
-plt.style.use("dark_background")
+# plt.style.use("dark_background")
 
 save_fig = True
 figsize = (15, 5)
@@ -88,14 +88,15 @@ for res_idx, res_cont_name in enumerate(res_cont_names):
             zorder=2,
         )
         ax[i].set_ylabel(f"$dJ/d\\{param}$")
-        # ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
         tt += 1
 
+ax[0].annotate(titles[0], xy=(0.03, 0.7), xycoords="axes fraction")
+ax[1].annotate(titles[1], xy=(0.03, 0.85), xycoords="axes fraction")
 ax[0].set_xticklabels([])
 ax[0].grid()
 ax[1].grid()
 ax[1].set_xlabel("Integration time [LT]")
-ax[0].legend(["True", "ESN"])
+# ax[0].legend(["True", "ESN"])
 
 ax = subfigs[1].subplots(2, len(res_ens_names))
 for res_idx, res_ens_name in enumerate(res_ens_names):
@@ -144,7 +145,7 @@ for res_idx, res_ens_name in enumerate(res_ens_names):
         plt.xlim(
             [dJdp_true_mean - 2 * dJdp_true_std, dJdp_true_mean + 2 * dJdp_true_std]
         )
-        # ax[i, res_idx].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+        ax[i, res_idx].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
         tt += 1
 ax[0, 0].set_ylabel("PDF")
 ax[1, 0].set_ylabel("PDF")
@@ -162,14 +163,18 @@ h.append(h2)
 #     loc="upper center",
 #     bbox_to_anchor=(0.5, 1.1),
 # )
-ax[0, 0].legend(
-    h, ["True", "ESN"], ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.3)
+# ax[0, 0].legend(
+#     h, ["True", "ESN"], ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.3)
+# )
+legend_str = ["True", "ESN", "True mean", "ESN mean"]
+plt.figlegend(
+    h, legend_str, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.12)
 )
 if save_fig:
     fig.savefig(
-        f"paper/graphics_ppt/figure_chaotic_sensitivity_black.png",
+        f"paper/graphics/figure_chaotic_sensitivity.png",
         bbox_inches="tight",
         dpi=300,
     )
-    # fig.savefig(f"paper/graphics/figure_chaotic_sensitivity.pdf", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_chaotic_sensitivity.pdf", bbox_inches="tight")
 plt.show()

@@ -22,7 +22,7 @@ plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 
 save_fig = True
-fig_name = "sensitivity_noisy_new_2"
+fig_name = "sensitivity_noisy_beta"
 # N_reservoir = 1200, connectivity = 20
 which_idx = [0, 3, 5]
 order_idx = [0, 2, 1]
@@ -150,9 +150,9 @@ pred_mss = [8, 8, 8]
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
 
-fig = plt.figure(figsize=(15, 6), constrained_layout=True)
+fig = plt.figure(figsize=(15, 3), constrained_layout=True)
 
-for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
+for k, plot_name in enumerate(["varying_beta"]):
     if plot_name == "varying_beta":
         save_paths = save_paths_beta
         # param_list = eParam
@@ -165,7 +165,7 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         not_vary_param = "beta"
     for j, save_path in enumerate(save_paths):
         i = eParam[vary_param]
-        ax = plt.subplot(2, len(save_paths), j + 1 + len(save_paths) * k)
+        ax = plt.subplot(1, len(save_paths), j + 1 + len(save_paths) * k)
         ax.set_title(titles[j + len(save_paths) * k], loc="left")
 
         dJdp_mean = [None] * len(model_paths)
@@ -228,7 +228,7 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
             if plot_name == "varying_beta":
                 ax.xaxis.set_major_locator(MultipleLocator(1))
             elif plot_name == "varying_tau":
-                ax.xaxis.set_major_locator(MultipleLocator(0.05))
+                ax.xaxis.set_major_locator(MultipleLocator(0.1))
             ax.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax.grid(visible=True)
             min_ylim = np.min(dJdp_true)
@@ -236,8 +236,15 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
             range_ylim = max_ylim - min_ylim
             ax.set_ylim([min_ylim - 0.15 * range_ylim, max_ylim + 0.15 * range_ylim])
 
+legend = plt.figlegend(
+    legend_str, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.2)
+)
+handles = legend.get_lines()
+handles = [handles[idx] for idx in [0, 1, 3, 2]]
+labels = [legend_str[idx] for idx in [0, 1, 3, 2]]
+# reorder legend
 plt.figlegend(
-    legend_str, loc="upper center", ncols=len(legend_str), bbox_to_anchor=(0.5, 1.1)
+    handles, labels, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.2)
 )
 if save_fig:
     fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight", dpi=300)

@@ -20,9 +20,9 @@ pathlib.PosixPath = pathlib.WindowsPath
 
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
-plt.style.use("dark_background")
+# plt.style.use("dark_background")
 
-figure_size = (15, 5)
+figure_size = (13, 5)
 
 save_fig = True
 
@@ -54,8 +54,8 @@ for model_idx in range(len(model_paths)):
             / f"{path_str}_{res_paths[res_idx][model_idx]}.pickle"
         )[0]
 
-plot_names = ["mu_1", "E_ac"]
-plot_names_ltx = ["\\mu_1", "E_{ac}"]
+plot_names = ["E_ac"]
+plot_names_ltx = ["E_{ac}"]
 esn_idx = 0
 
 titles = [f"({chr(i)})" for i in range(ord("a"), ord("z") + 1)]
@@ -100,12 +100,16 @@ for res_idx in range(len(res_paths)):
             min_pks_true = np.min(pks)
             max_pks_true = np.max(pks)
 
-            plt.plot(
-                p * np.ones(len(pks)),
-                pks,
+            # Subsample the data
+            indices = np.random.choice(len(pks), size=int(len(pks) / 10), replace=False)
+            pks_sub = pks[indices]
+
+            h1 = plt.scatter(
+                p * np.ones(len(pks_sub)),
+                pks_sub,
                 color=true_color,
                 marker=marker,
-                markersize=markersize,
+                s=markersize,
                 linestyle="None",
             )
             plt.ylabel(f"Max(${plot_names_ltx[j]}$)")
@@ -119,12 +123,17 @@ for res_idx in range(len(res_paths)):
             pks_pred = res_list[0][res_idx]["pred_peaks"][p_idx][plt_idx][
                 esn_idx
             ]  # [n_params,n_plots,n_models,n_ensemble]
-            plt.plot(
-                p * np.ones(len(pks_pred)),
-                pks_pred,
+
+            indices = np.random.choice(
+                len(pks_pred), size=int(len(pks_pred) / 10), replace=False
+            )
+            pks_pred_sub = pks_pred[indices]
+            h2 = plt.scatter(
+                p * np.ones(len(pks_pred_sub)),
+                pks_pred_sub,
                 color=pred_color,
                 marker=marker,
-                markersize=markersize,
+                s=markersize,
                 linestyle="None",
             )
             plt.ylabel(f"Max(${plot_names_ltx[j]}$)")
@@ -140,12 +149,16 @@ for res_idx in range(len(res_paths)):
             pks_pred2 = res_list[1][res_idx]["pred_peaks"][p_idx][plt_idx][
                 esn_idx
             ]  # [n_params,n_plots,n_models,n_ensemble]
-            plt.plot(
-                p * np.ones(len(pks_pred2)),
-                pks_pred2,
+            indices = np.random.choice(
+                len(pks_pred2), size=int(len(pks_pred2) / 10), replace=False
+            )
+            pks_pred2_sub = pks_pred2[indices]
+            h3 = plt.scatter(
+                p * np.ones(len(pks_pred2_sub)),
+                pks_pred2_sub,
                 color=pred_color2,
                 marker=marker,
-                markersize=markersize,
+                s=markersize,
                 linestyle="None",
             )
             plt.xlabel(f"$\\{vary_param}$")
@@ -169,17 +182,32 @@ for res_idx in range(len(res_paths)):
             if len(plt_idx_arr) == 1:
                 ax[i].set_ylim(ylims)
                 ax[i].grid()
-                # ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+                ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
             else:
                 ax[i, j].set_ylim(ylims)
                 ax[i, j].grid()
-                # ax[i, j].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
+                ax[i, j].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
             tt += 1
+
+legend_str = [
+    "True",
+    "$\\beta_{\mathrm{train}}=[1,5]$",
+    "$\\beta_{\mathrm{train}}=[6,8]$",
+]
+plt.figlegend(
+    [h1, h2, h3],
+    legend_str,
+    loc="upper right",
+    ncols=len(legend_str),
+    bbox_to_anchor=(1.0, 1.12),
+    markerscale=5,
+)
+
 if save_fig:
     fig.savefig(
-        f"paper/graphics_ppt/figure_bifn_diagram_black.png",
+        f"paper/graphics/figure_bifn_diagram.png",
         bbox_inches="tight",
         dpi=1200,
     )
-    # fig.savefig(f"paper/graphics/figure_bifn_diagram.pdf", bbox_inches="tight")
+    fig.savefig(f"paper/graphics/figure_bifn_diagram.pdf", bbox_inches="tight")
 plt.show()
