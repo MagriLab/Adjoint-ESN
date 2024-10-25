@@ -175,6 +175,7 @@ def loop(
         if not isinstance(U_val, list):
             U_val = [U_val]
             Y_val = [Y_val]
+            P_val = [P_val]
 
         if val_idx_list is None:
             val_idx_list = range(len(U_val))

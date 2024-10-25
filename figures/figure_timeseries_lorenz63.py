@@ -21,7 +21,7 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 same_washout = False
 model_path = Path("local_results/lorenz63/run_20240208_121804")
 

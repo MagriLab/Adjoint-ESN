@@ -14,7 +14,6 @@ sys.path.append(root)
 from adjoint_esn.rijke_galerkin.solver import Rijke
 
 
-# @todo: saving config file
 def make_dir(path):
     """Create the directory to save the simulation data"""
     if not path.suffix == ".h5":
@@ -36,7 +35,6 @@ def write_h5(path, data):
     hf.close()
 
 
-# @todo: rijke config, instead of passing everything in argparse
 def main(args):
     """Run the Rijke Galerkin solver"""
     print("Initialising Rijke Galerkin solver.", flush=True)

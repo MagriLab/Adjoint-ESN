@@ -20,7 +20,7 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 # figure options
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
 rc("text", usetex=True)
-save_fig = True
+save_fig = False
 use_cv = False
 figure_name = "lorenz_convergence"
 figure_size = (15, 4)

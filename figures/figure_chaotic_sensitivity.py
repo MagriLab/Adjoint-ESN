@@ -18,7 +18,7 @@ from adjoint_esn.utils.enums import eParam
 plt.style.use("src/stylesheet.mplstyle")
 # plt.style.use("dark_background")
 
-save_fig = True
+save_fig = False
 figsize = (15, 5)
 
 model_path = Path("final_results/rijke/run_20240307_175258")
@@ -87,7 +87,7 @@ for res_idx, res_cont_name in enumerate(res_cont_names):
             antialiased=True,
             zorder=2,
         )
-        ax[i].set_ylabel(f"$dJ/d\\{param}$")
+        ax[i].set_ylabel(f"$d\mathcal{{J}}/d\\{param}$")
         tt += 1
 
 ax[0].annotate(titles[0], xy=(0.03, 0.7), xycoords="axes fraction")
@@ -141,7 +141,7 @@ for res_idx, res_ens_name in enumerate(res_ens_names):
             linestyle=pred_ls,
             linewidth=2.5,
         )
-        plt.xlabel(f"$dJ/d\\{param}$")
+        plt.xlabel(f"$d\mathcal{{J}}/d\\{param}$")
         plt.xlim(
             [dJdp_true_mean - 2 * dJdp_true_std, dJdp_true_mean + 2 * dJdp_true_std]
         )

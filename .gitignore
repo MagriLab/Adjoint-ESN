@@ -2,11 +2,10 @@
 __pycache__/
 .ipynb_checkpoints/
 .vscode/
+.venv
 tmp_*
 local*
-paper
-paper_chaotic
-paper_chaotic_v2
+paper*
+final*
 data
 env
-final_results

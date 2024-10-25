@@ -24,7 +24,7 @@ cmap = cm.create_custom_colormap(type="discrete")
 
 figure_size = (13, 5)
 
-save_fig = True
+save_fig = False
 
 true_color = cmap(0)
 pred_color = cmap(1)

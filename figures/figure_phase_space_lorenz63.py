@@ -19,9 +19,11 @@ from adjoint_esn.utils import errors
 from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.dynamical_systems import Lorenz63
 
-rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
+rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 18})
 rc("text", usetex=True)
-save_fig = True
+plt.style.use("dark_background")
+
+save_fig = False
 same_washout = True
 model_path = Path("local_results/lorenz63/run_20240208_121804")
 
@@ -29,16 +31,23 @@ fig_name = "lorenz_phase"
 
 # Create the mesh to get the data from
 eParam = Lorenz63.get_eParamVar()
-test_param_list = np.zeros((2, 3))
+test_param_list = np.zeros((3, 3))
 
-test_param_list[0, eParam.beta] = 8 / 3
-test_param_list[0, eParam.rho] = 28.0
-test_param_list[0, eParam.sigma] = 10.0
-
-test_param_list[1, eParam.beta] = 2.0
-test_param_list[1, eParam.rho] = 52.0
-test_param_list[1, eParam.sigma] = 13.0
-LT = [1.1, 0.8]
+which_param = "rho"
+if which_param == "beta":
+    test_param_list[:, eParam.beta] = np.linspace(2.0, 3.0, len(test_param_list))
+    test_param_list[:, eParam.rho] = np.array([28.0] * len(test_param_list))
+    test_param_list[:, eParam.sigma] = np.array([10.0] * len(test_param_list))
+elif which_param == "rho":
+    test_param_list[:, eParam.beta] = np.array([8 / 3] * len(test_param_list))
+    test_param_list[:, eParam.rho] = np.linspace(25.0, 55.0, len(test_param_list))
+    test_param_list[:, eParam.sigma] = np.array([10.0] * len(test_param_list))
+elif which_param == "sigma":
+    test_param_list[:, eParam.beta] = np.array([8 / 3] * len(test_param_list))
+    test_param_list[:, eParam.rho] = np.array([28.0] * len(test_param_list))
+    test_param_list[:, eParam.sigma] = np.linspace(6.0, 18.0, len(test_param_list))
+# LT = [1.1, 0.8]
+LT = [1] * len(test_param_list)
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)"]
 
 n_ensemble = 1
@@ -51,9 +60,6 @@ figure_size = (12, 5)
 config = post.load_config(model_path)
 results = pp.unpickle_file(model_path / "results.pickle")[0]
 
-cmap = cm.create_custom_colormap(type="discrete")
-true_color = cmap(0)
-pred_color = cmap(2)
 true_lw = 8.0
 pred_lw = 2.5
 true_ls = "-"
@@ -172,8 +178,10 @@ test_washout_time = config.model.washout_time
 eVars = my_sys.get_eVar()
 plt_idx = [eVars.z]
 
+fig = plt.figure(figsize=figure_size, constrained_layout=True)
+PLOT_TRUE_DATA = []
+PLOT_PRED_DATA = []
 for p_idx, p in enumerate(test_param_list):
-    fig = plt.figure(figsize=figure_size, constrained_layout=True)
     test_loop_times = [short_loop_lt * LT[p_idx], long_loop_lt * LT[p_idx]]
     test_sim_time = max(test_loop_times) + test_transient_time + test_washout_time
     p_sim = {"beta": p[eParam.beta], "rho": p[eParam.rho], "sigma": p[eParam.sigma]}
@@ -265,15 +273,48 @@ for p_idx, p in enumerate(test_param_list):
     print("Best idx: ", best_idx)
     best_idx = 0
 
-    vis.plot_lorenz63_attractor(
-        fig,
-        data["long"]["y"],
-        Y_PRED_LONG[best_idx],
-        len(Y_PRED_LONG[best_idx]),
-        colors=[true_color, pred_color],
+    PLOT_TRUE_DATA.append(data["long"]["y"])
+    PLOT_PRED_DATA.append(Y_PRED_LONG[best_idx])
+
+cmap = cm.create_custom_colormap(type="discrete")
+true_color = cmap(0)
+pred_color = cmap(2)
+
+# true_color = "#196B24"
+# pred_color = "#A02B93"
+cmap2 = cm.create_custom_colormap(
+    type="continuous", colors=[true_color, "white"], N=len(test_param_list)
+)
+cmap3 = cm.create_custom_colormap(
+    type="continuous", colors=[pred_color, "white"], N=len(test_param_list)
+)
+colors = [
+    [cmap2(i) for i in range(len(test_param_list))],
+    [cmap3(i) for i in range(len(test_param_list))],
+]
+legend = [
+    f"${which_param[0]}$ = {test_param_list[i, eParam[which_param]]}"
+    for i in range(len(test_param_list))
+]
+ani = vis.plot_lorenz63_attractor(
+    fig,
+    PLOT_TRUE_DATA,
+    PLOT_PRED_DATA,
+    len(Y_PRED_LONG[best_idx]),
+    colors=colors,
+    animate=True,
+    legend=legend,
+)
+if save_fig:
+    fig.savefig(
+        f"local_images/figure_{fig_name}_{which_param}.png",
+        bbox_inches="tight",
+        dpi=300,
     )
-    if save_fig:
-        fig.savefig(
-            f"local_images/figure_{fig_name}_{p_idx}.png", bbox_inches="tight", dpi=300
-        )
+    ani.save(
+        f"local_images/figure_{fig_name}_ani_{which_param}.gif",
+        writer="pillow",
+        fps=10,
+    )
+    # ani.save(f"local_images/figure_{fig_name}_ani_rho.gif", writer='imagemagick', fps=10, extra_args=['-loop', str(3)])
 plt.show()

@@ -22,8 +22,8 @@ plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 # plt.style.use("dark_background")
 
-save_fig = True
-fig_name = "sensitivity_tau"
+save_fig = False
+fig_name = "sensitivity_beta"
 # N_reservoir = 1200, connectivity = 20
 model_path = Path("final_results/rijke/run_20231029_153121")
 
@@ -77,7 +77,7 @@ print(ESN_dict)
     for hyp_param_name, hyp_param in zip(hyp_param_names, hyp_params)
 ]
 
-for k, plot_name in enumerate(["varying_tau"]):
+for k, plot_name in enumerate(["varying_beta"]):
     if plot_name == "varying_beta":
         save_paths = save_paths_beta
         # param_list = eParam
@@ -132,7 +132,7 @@ for k, plot_name in enumerate(["varying_tau"]):
         plt.title(f"$\\{not_vary_param} = {p_list[0, eParam[not_vary_param]]}$")
 
         if j == 0:
-            plt.ylabel(f"$dJ/d\\{i.name}$")
+            plt.ylabel(f"$d\mathcal{{J}}/d\\{i.name}$")
         # if j == 0 and k == 0:
         #     # plt.legend(["True", "ESN"], loc="upper left")
         #     plt.legend(["True", "ESN"], loc="lower center")

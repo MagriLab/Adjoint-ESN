@@ -236,7 +236,7 @@ def create_dataset(
     N_g,
     u_f_order,
     noise_level=0,
-    random_seed=0,
+    random_seed=None,
     tau=0,
     loop_names=None,
     start_idxs=None,

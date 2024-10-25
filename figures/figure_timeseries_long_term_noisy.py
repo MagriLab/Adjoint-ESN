@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import rc
+from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 import adjoint_esn.utils.postprocessing as post
 import adjoint_esn.utils.visualizations as vis
@@ -23,28 +24,35 @@ from adjoint_esn.utils.enums import eParam, get_eVar
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 
-figure_size = (15, 4)
+figure_size = (15, 4.5)
 
 save_fig = False
 fig_name = "lco1_noisy"
 
+which_idx = [0, 3, 5]
+order_idx = [0, 2, 1]
+
 model_paths = [
     Path(
-        "final_results/rijke/run_20231029_153121_noise_5"
+        "local_results/rijke/run_20231029_153121_noise_5_new_2"  # 0
     ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
     Path(
-        "final_results/rijke/run_20231029_153121_noise_5_tikh_5"
+        "local_results/rijke/run_20231029_153121_noise_5_tikh_5_new_2"  # 1
     ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
-    #        Path(
-    #         "local_results/rijke/run_20231029_153121_noise_5_tikh_4"
-    #         ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
     Path(
-        "final_results/rijke/run_20231029_153121_noise_5_tikh_3"
+        "local_results/rijke/run_20231029_153121_noise_5_tikh_4_new_2"  # 2
     ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
-    #         Path(
-    #         "local_results/rijke/run_20231029_153121_noise_5_tikh_2"
-    #         ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
+    Path(
+        "local_results/rijke/run_20231029_153121_noise_5_tikh_3_new_2"  # 3
+    ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
+    Path(
+        "local_results/rijke/run_20231029_153121_noise_5_tikh_2_new_2"  # 4
+    ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
+    Path(
+        "local_results/rijke/run_20231029_153121_noise_5_tikh_1_new_2"  # 5
+    ),  # rijke with reservoir, trained on beta = 1,2,3,4,5 + 5% noise
 ]
+model_paths = [model_paths[idx] for idx in which_idx]
 
 periodic = True
 titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"], ["(g)", "(h)", "(i)"]]
@@ -55,44 +63,57 @@ beta = 2.0
 tau = 0.25
 ts_path_str = "timeseries_beta_2_00_tau_0_25_results"
 ts_paths = [
-    "20240412_111823",  # tikh = 1e-6
-    "20240412_142447",  # tikh = 1e-5
-    # "20240412_141617", #tikh = 1e-4
-    "20240412_140649"  # tikh = 1e-3
-    # "20240413_010620" #tikh = 1e-2
+    "20240724_161946",  # tikh = 1e-6
+    "",  # tikh = 1e-5
+    "",  # tikh = 1e-4
+    "20240724_162115",  # tikh = 1e-3
+    "20240724_162241",  # tikh = 1e-2
+    "20240724_162211",  # tikh = 1e-1
 ]
 
 lt_path_str = "long_term_beta_2_00_tau_0_25_results"
 lt_paths = [
-    "20240412_114520",  # tikh = 1e-6
-    "20240412_142732",  # tikh = 1e-5
-    # "20240412_141542", #tikh = 1e-4
-    "20240412_140534"  # tikh = 1e-3
-    # "20240413_011026" #tikh = 1e-2
+    "20240724_164214",  # tikh = 1e-6
+    "",  # tikh = 1e-5
+    "",  # tikh = 1e-4
+    "20240724_163645",  # tikh = 1e-3
+    "20240724_162616",  # tikh = 1e-2
+    "20240724_163930",  # tikh = 1e-1
 ]
+ts_paths = [ts_paths[idx] for idx in which_idx]
+lt_paths = [lt_paths[idx] for idx in which_idx]
 
+# reorder
+model_paths = [model_paths[idx] for idx in order_idx]
+ts_paths = [ts_paths[idx] for idx in order_idx]
+lt_paths = [lt_paths[idx] for idx in order_idx]
 
-plt_e_idx = 0
-plt_loop_idx = 0
-
+# add legend
 legend_str = [
     "Train",
     "True",
+]
+legend_str_lambda = [
     "$\lambda = 10^{-6}$",
     "$\lambda = 10^{-5}$",
+    "$\lambda = 10^{-4}$",
     "$\lambda = 10^{-3}$",
+    "$\lambda = 10^{-2}$",
+    "$\lambda = 10^{-1}$",
 ]
+legend_str_lambda = [legend_str_lambda[idx] for idx in which_idx]
+[legend_str.append(legend_str_lambda[idx]) for idx in order_idx]
 
 train_color = cmap(3)
 train_lw = 1.0
 train_ls = "None"
 
 true_color = cmap(0)
-true_lw = 4.5
+true_lw = 5.0
 true_ls = "-"
 
 pred_colors = [cmap(4), cmap(1), cmap(2)]
-pred_lws = [2.5, 2.0, 1.5]
+pred_lws = [2.5, 2.5, 2.5]
 pred_lss = ["-", "--", "-."]
 
 linespecs = {
@@ -102,6 +123,8 @@ linespecs = {
 }
 
 n_models = len(model_paths)
+plt_e_idx = 0
+plt_loop_idx = 0
 
 config = post.load_config(model_paths[0])
 
@@ -196,7 +219,9 @@ for i in range(len(plt_idx)):
         ylabel=f"$\{plt_idx[i].name}$",
         **linespecs,
     )
-    ax.annotate(titles[i][0], xy=(0.015, 0.85), xycoords="axes fraction")
+    ax.annotate(titles[i][0], xy=(0.012, 0.85), xycoords="axes fraction")
+    ax.xaxis.set_major_locator(MultipleLocator(2.5))
+
     # Plot phase plot
     ax1 = subfigs[1].add_subplot(len(plt_idx) + 1, 1, i + 1)
     phase_space_steps = pp.get_steps(2.0, network_dt)
@@ -215,7 +240,7 @@ for i in range(len(plt_idx)):
         xlabel=f"$\{plt_idx_pairs[i][0].name}$",
         ylabel=f"$\{plt_idx_pairs[i][1].name}$",
     )
-    ax1.annotate(titles[i][1], xy=(0.015, 0.85), xycoords="axes fraction")
+    ax1.annotate(titles[i][1], xy=(0.012, 0.85), xycoords="axes fraction")
 
 for model_idx in range(len(model_paths)):
     error_measure = errors.rel_L2
@@ -237,7 +262,8 @@ vis.plot_lines(
     ylabel="$E_{ac}$",
     **linespecs,
 )
-ax.annotate(titles[2][0], xy=(0.015, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][0], xy=(0.012, 0.85), xycoords="axes fraction")
+ax.xaxis.set_major_locator(MultipleLocator(2.5))
 
 # LONG-TERM STATISTICS
 # Plot statistics
@@ -267,7 +293,7 @@ vis.plot_statistics_ensemble(
     ylabel="PDF",
     **linespecs,
 )
-ax.annotate(titles[2][1], xy=(0.03, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][1], xy=(0.012, 0.85), xycoords="axes fraction")
 
 # AMPLITUDE SPECTRUM
 # Plot amplitude spectrum
@@ -309,7 +335,7 @@ for i in range(len(plt_idx)):
                 remove_mean=True,
                 periodic=periodic,
             )
-    ax.annotate(titles[i][2], xy=(0.03, 0.85), xycoords="axes fraction")
+    ax.annotate(titles[i][2], xy=(0.012, 0.85), xycoords="axes fraction")
     vis.plot_asd(  # *[AS_PRED[e] for e in range(n_ensemble)],
         asd_y=[AS_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
         omega_y=[OMEGA_PRED[model_idx][plt_e_idx] for model_idx in range(n_models)],
@@ -323,8 +349,20 @@ for i in range(len(plt_idx)):
     )
     plt.yscale("log")
     plt.ylim([1e-5, 10])
-plt.figlegend(
+
+legend = plt.figlegend(
     legend_str, loc="upper center", ncols=len(legend_str), bbox_to_anchor=(0.5, 1.15)
+)
+handles = legend.get_lines()
+handles = [handles[idx] for idx in [0, 1, 2, 4, 3]]
+labels = [legend_str[idx] for idx in [0, 1, 2, 4, 3]]
+# reorder legend
+plt.figlegend(
+    handles,
+    labels,
+    loc="upper center",
+    ncols=len(legend_str),
+    bbox_to_anchor=(0.5, 1.15),
 )
 
 ax = subfigs[2].add_subplot(len(plt_idx) + 1, 1, len(plt_idx) + 1)
@@ -355,7 +393,7 @@ vis.plot_asd(
     alpha=0.8,
     **linespecs,
 )
-ax.annotate(titles[2][2], xy=(0.03, 0.85), xycoords="axes fraction")
+ax.annotate(titles[len(plt_idx)][2], xy=(0.012, 0.85), xycoords="axes fraction")
 
 if save_fig:
     fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight")

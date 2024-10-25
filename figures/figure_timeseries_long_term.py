@@ -26,7 +26,7 @@ cmap = cm.create_custom_colormap(type="discrete")
 # figure_size = (15, 4)
 figure_size = (15, 2.5)
 
-save_fig = True
+save_fig = False
 fig_name = "chaotic2"
 
 model_paths = [
@@ -119,7 +119,7 @@ elif fig_name == "chaotic1":
     # titles = [["(a)", "(b)", "(c)"], ["(d)", "(e)", "(f)"]]
     titles = [["(a)", "(b)", "(c)"]]
     LT = 8.5
-    t_label = "$t [LT]$"
+    t_label = "$t \; [LT]$"
     model_paths = model_paths
     ts_path_str = "timeseries_beta_7_60_tau_0_22_results"
     ts_paths = [
@@ -141,7 +141,7 @@ elif fig_name == "chaotic2":
     # titles = [["(g)", "(h)", "(i)"], ["(j)", "(k)", "(l)"]]
     titles = [["(d)", "(e)", "(f)"]]
     LT = 3.9
-    t_label = "$t [LT]$"
+    t_label = "$t \; [LT]$"
     model_paths = model_paths
     ts_path_str = "timeseries_beta_8_70_tau_0_23_results"
     ts_paths = [

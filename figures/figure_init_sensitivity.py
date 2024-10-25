@@ -19,7 +19,7 @@ from adjoint_esn.utils.enums import get_eVar
 
 plt.style.use("src/stylesheet.mplstyle")
 
-save_fig = True
+save_fig = False
 figsize = (15, 5)
 fig_name = ""
 model_paths = [
@@ -46,7 +46,7 @@ N_g = config.simulation.N_g
 eInputVar = get_eVar(input_vars, N_g)
 eOutputVar = get_eVar(output_vars, N_g)
 
-plt_idx_arr = [eOutputVar.mu_1, eOutputVar.eta_1]
+plt_idx_arr = [eOutputVar.eta_1, eOutputVar.mu_1]
 
 cmap = cm.create_custom_colormap(type="continuous")
 true_color = cmap(0.0)  # teal
@@ -132,7 +132,7 @@ for j, (model_path, res_cont_name, LT) in enumerate(
         )
 
         if j == 0:
-            ax[i].set_ylabel(f"$dJ/d\\{plt_idx.name}$")
+            ax[i].set_ylabel(f"$d\mathcal{{J}}/d\\{plt_idx.name}(0)$")
 
         ax[i].annotate(titles[tt], xy=(0.03, 0.85), xycoords="axes fraction")
         tt += 1

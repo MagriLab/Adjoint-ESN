@@ -18,7 +18,7 @@ plt.style.use("src/stylesheet.mplstyle")
 cmap = plt.cm.get_cmap("GnBu")
 # cmap = cm.create_custom_colormap('aqua',type='discrete')
 
-save_fig = True
+save_fig = False
 fig_name = "noisy_validation_tikhonov"
 # N_reservoir = 1200, connectivity = 20
 model_paths = [

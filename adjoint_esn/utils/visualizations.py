@@ -136,7 +136,7 @@ def plot_lorenz63_attractor(fig, U, U_pred, length, colors, animate=False, legen
             blit=False,
         )
     else:
-        None
+        ani = None
     return ani
 
 

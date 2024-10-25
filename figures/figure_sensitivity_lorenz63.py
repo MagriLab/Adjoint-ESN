@@ -20,11 +20,11 @@ from adjoint_esn.utils.dynamical_systems import Lorenz63
 # figure options
 rc("font", **{"family": "serif", "serif": ["Computer Modern"], "size": 24})
 rc("text", usetex=True)
-plt.style.use("dark_background")
-save_fig = True
+# plt.style.use("dark_background")
+save_fig = False
 use_cv = False
 figure_name = "2"
-figure_size = (15, 7)
+figure_size = (15, 4)
 
 cmap = cm.create_custom_colormap(type="discrete")
 true_color = cmap(0)
@@ -186,24 +186,24 @@ for i, param in enumerate(param_vars):
     my_dJdp_approx = np.polyval(dcoeffs * coeffs[:-1], my_param[eParam[param]])
     print(f"dJd{param} approx at {my_param} = {my_dJdp_approx}")
 
-    plt.subplot(2, len(param_vars), i + 1)
-    vis.plot_lines(
-        sens_results[f"{param}_list"],
-        J_true_mean,
-        J_esn_mean,
-        # J_approx,
-        linestyle=[true_ls, pred_ls, direct_ls],
-        linewidth=[true_lw, pred_lw, direct_lw],
-        color=[true_color, pred_color, direct_color],
-        marker=[true_marker, pred_marker, direct_marker],
-        # xlabel=f"$\\{param}$",
-        ylabel=f"$\\bar{{z}}$",
-    )
-    plt.xlim(xlims[eParam[param]])
-    plt.ylim(ylims_obj[eParam[param]])
-    ax = plt.gca()
-    ax.set_xticklabels([])
-    ax.xaxis.set_major_locator(MultipleLocator(xticks[eParam[param]]))
+    # plt.subplot(2, len(param_vars), i + 1)
+    # vis.plot_lines(
+    #     sens_results[f"{param}_list"],
+    #     J_true_mean,
+    #     J_esn_mean,
+    #     # J_approx,
+    #     linestyle=[true_ls, pred_ls, direct_ls],
+    #     linewidth=[true_lw, pred_lw, direct_lw],
+    #     color=[true_color, pred_color, direct_color],
+    #     marker=[true_marker, pred_marker, direct_marker],
+    #     # xlabel=f"$\\{param}$",
+    #     ylabel=f"$\\bar{{z}}$",
+    # )
+    # plt.xlim(xlims[eParam[param]])
+    # plt.ylim(ylims_obj[eParam[param]])
+    # ax = plt.gca()
+    # ax.set_xticklabels([])
+    # ax.xaxis.set_major_locator(MultipleLocator(xticks[eParam[param]]))
     # ax.annotate(titles[i], xy=(0.85, 0.85), xycoords="axes fraction")
 
     if i == 1:
@@ -212,7 +212,7 @@ for i, param in enumerate(param_vars):
         # plt.legend(legend_str, loc="lower right")
         plt.legend(legend_str, loc="upper left")
 
-    plt.subplot(2, len(param_vars), i + 4)
+    plt.subplot(1, len(param_vars), i + 1)
     vis.plot_lines(
         sens_results[f"{param}_list"],
         dJdp_true_mean[:, eParam[param], 0],
@@ -237,7 +237,7 @@ for i, param in enumerate(param_vars):
     #     plt.legend(legend_str, loc='upper right')
 if save_fig:
     fig.savefig(
-        f"local_images/figure_{figure_name}_black.png", bbox_inches="tight", dpi=300
+        f"paper/graphics_ppt/figure_{figure_name}.png", bbox_inches="tight", dpi=300
     )
     # fig.savefig(f"paper_chaotic/graphics/figure_{figure_name}.pdf", bbox_inches="tight")
 plt.show()

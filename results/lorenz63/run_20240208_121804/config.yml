@@ -1,0 +1,172 @@
+!!python/object:ml_collections.config_dict.config_dict.ConfigDict
+_convert_dict: true
+_fields:
+  model: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+    _convert_dict: true
+    _fields:
+      connectivity: 3
+      input_only_mode: false
+      input_vars:
+      - x
+      - y
+      - z
+      input_weights_mode: sparse_grouped
+      network_dt: 0.01
+      param_vars:
+      - beta
+      - rho
+      - sigma
+      r2_mode: false
+      reservoir_size: 1200
+      reservoir_weights_mode: erdos_renyi1
+      washout_time: 4
+    _locked: true
+    _type_safe: true
+  random_seed: 41
+  simulation: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+    _convert_dict: true
+    _fields:
+      beta_list:
+      - 1
+      - 1.5
+      - 2
+      - 2.5
+      - 3
+      integrator: rk4
+      noise_level: 0.0
+      rho_list:
+      - 30
+      - 35
+      - 40
+      - 45
+      - 50
+      sigma_list:
+      - 8
+      - 10
+      - 12
+      - 14
+      - 16
+      sim_dt: 0.01
+      sim_time: 200
+      transient_time: 20
+    _locked: true
+    _type_safe: true
+  train: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+    _convert_dict: true
+    _fields:
+      regime_selection: 20
+      tikhonov: 0.001
+      time: 10
+    _locked: true
+    _type_safe: true
+  val: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+    _convert_dict: true
+    _fields:
+      error_measure: rel_L2
+      fold_time: 2
+      hyperparameters: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+        _convert_dict: true
+        _fields:
+          input_scaling: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              max: 0.1
+              min: 0.01
+              scale: log10
+            _locked: true
+            _type_safe: true
+          leak_factor: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              max: 1.0
+              min: 0.1
+              scale: uniform
+            _locked: true
+            _type_safe: true
+          parameter_normalization_mean: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              beta: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 100.0
+                  min: 40.0
+                  scale: uniform
+                _locked: true
+                _type_safe: true
+              rho: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 100.0
+                  min: 40.0
+                  scale: uniform
+                _locked: true
+                _type_safe: true
+              sigma: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 100.0
+                  min: 40.0
+                  scale: uniform
+                _locked: true
+                _type_safe: true
+            _locked: true
+            _type_safe: true
+          parameter_normalization_var: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              beta: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 0.1
+                  min: 0.01
+                  scale: log10
+                _locked: true
+                _type_safe: true
+              rho: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 0.01
+                  min: 0.001
+                  scale: log10
+                _locked: true
+                _type_safe: true
+              sigma: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+                _convert_dict: true
+                _fields:
+                  max: 0.01
+                  min: 0.001
+                  scale: log10
+                _locked: true
+                _type_safe: true
+            _locked: true
+            _type_safe: true
+          spectral_radius: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              max: 1.0
+              min: 0.1
+              scale: uniform
+            _locked: true
+            _type_safe: true
+          tikhonov: !!python/object:ml_collections.config_dict.config_dict.ConfigDict
+            _convert_dict: true
+            _fields:
+              max: 1.0e-06
+              min: 1.0e-10
+              scale: log10
+            _locked: true
+            _type_safe: true
+        _locked: true
+        _type_safe: true
+      n_calls: 250
+      n_folds: 10
+      n_initial_points: 100
+      n_realisations: 5
+      regime_selection: 5
+      time: 100
+      validate_on_train: false
+    _locked: true
+    _type_safe: true
+_locked: true
+_type_safe: true

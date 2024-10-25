@@ -17,7 +17,7 @@ from adjoint_esn.utils import preprocessing as pp
 from adjoint_esn.utils.enums import eParam
 
 plt.style.use("src/stylesheet.mplstyle")
-save_fig = True
+save_fig = False
 figure_size = (15, 5)
 # N_reservoir = 1200, connectivity = 20
 model_paths = [

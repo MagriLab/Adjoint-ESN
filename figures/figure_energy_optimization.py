@@ -16,7 +16,7 @@ from adjoint_esn.utils import preprocessing as pp
 plt.style.use("src/stylesheet.mplstyle")
 # plt.style.use("dark_background")
 
-save_fig = True
+save_fig = False
 plot_optimization = True
 
 cmap1 = cm.create_custom_colormap(type="discrete", map_name="defne")
@@ -82,7 +82,7 @@ pos = ax[0].imshow(
 
 cbar = fig.colorbar(pos, ax=ax[0], shrink=1.0, ticks=[0, 20, 40, 60, 80, 100])
 cbar.ax.set_yticklabels(["$0$", "$20$", "$40$", "$60$", "$80$", "$\geq 100$"])
-cbar.ax.set_title("$J$")
+cbar.ax.set_title("$\mathcal{J}$")
 
 ax[0].set_ylabel("$\\tau$")
 ax[0].set_xlabel("$\\beta$")
@@ -163,7 +163,7 @@ if plot_optimization:
         )
 
 ax[1].set_xlabel("Iteration")
-ax[1].set_ylabel("$J$")
+ax[1].set_ylabel("$\mathcal{J}$")
 ax[1].legend([f"Path {opt_idx+1}" for opt_idx in range(len(optimization_paths))])
 ax[1].annotate("(b)", xy=(-0.1, 0.95), xycoords="axes fraction")
 ax[1].grid()

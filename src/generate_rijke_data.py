@@ -43,7 +43,10 @@ def run_sim(params):
     beta_name = beta_name.replace(".", "_")
     tau_name = f"{tau:.2f}"
     tau_name = tau_name.replace(".", "_")
-    sim_str = f"data/rijke_kings_poly_N_g_4_beta_{beta_name}_tau_{tau_name}.h5"
+
+    N_g = 4  # number of Galerkin modes
+
+    sim_str = f"data/rijke_kings_poly_N_g_{N_g}_beta_{beta_name}_tau_{tau_name}.h5"
     print(sim_str)
     args_dict = {
         "data_path": Path(sim_str),
@@ -54,7 +57,7 @@ def run_sim(params):
         "simulation_time": 1200,
         "transient_time": 200,
         "seed": None,
-        "N_g": 4,
+        "N_g": N_g,
         "N_c": 10,
         "c_1": 0.1,
         "c_2": 0.06,
@@ -70,8 +73,8 @@ def run_sim(params):
 
 
 def main():
-    beta_list = np.array([4.5])
-    tau_list = np.array([0.12])
+    beta_list = np.arange(1.0, 6.0, 1.0)
+    tau_list = np.arange(0.1, 0.35, 0.05)
 
     beta_mesh, tau_mesh = np.meshgrid(beta_list, tau_list)
     print(mp.cpu_count())

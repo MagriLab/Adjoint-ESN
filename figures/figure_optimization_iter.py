@@ -23,7 +23,7 @@ plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 # plt.style.use("dark_background")
 
-save_fig = True
+save_fig = False
 model_path = Path("final_results/rijke/run_20231029_153121")  # rijke with reservoir
 optimization_path = "20231129_180629"
 

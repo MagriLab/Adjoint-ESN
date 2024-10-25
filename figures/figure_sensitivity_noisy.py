@@ -21,71 +21,89 @@ from adjoint_esn.utils.enums import eParam
 plt.style.use("src/stylesheet.mplstyle")
 cmap = cm.create_custom_colormap(type="discrete")
 
-save_fig = True
-fig_name = "sensitivity_noisy_v2"
+save_fig = False
+fig_name = "sensitivity_noisy_beta"
 # N_reservoir = 1200, connectivity = 20
-which_idx = [0, 2, 3]
+which_idx = [0, 3, 5]
 order_idx = [0, 2, 1]
 
 model_paths = [
-    Path("final_results/rijke/run_20231029_153121_noise_5"),  # 0
-    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_5"),  # 1
-    Path("final_results/rijke/run_20231029_153121_noise_5_tikh_3"),  # 2
-    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2"),  # 3
+    Path("local_results/rijke/run_20231029_153121_noise_5_new_2"),  # 0
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_5_new_2"),  # 1
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_4_new_2"),  # 2
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_3_new_2"),  # 3
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_2_new_2"),  # 4
+    Path("local_results/rijke/run_20231029_153121_noise_5_tikh_1_new_2"),  # 5
 ]
 model_paths = [model_paths[idx] for idx in which_idx]
 
 # not same washout, eta_1_init = 1.5
 save_paths_beta = [
     [
-        "20240414_011611",
-        "20240414_001647",
-        "20240413_141727",
-        "20240708_030859",
+        "20240725_015053",
+        "",
+        "",
+        "20240724_100945",
+        "20240724_103122",
+        "20240724_224900",
     ],  # tau = 0.07
     [
-        "20240412_224305",
-        "20240412_222739",
-        "20240413_083401",
-        "20240708_072535",
+        "20240724_205245",
+        "",
+        "",
+        "20240724_061206",
+        "20240724_053634",
+        "20240724_180642",
     ],  # tau = 0.12
     [
-        "20240413_014324",
-        "20240413_024459",
-        "20240413_162126",
-        "20240708_090848",
+        "20240724_211354",
+        "",
+        "",
+        "20240724_103808",
+        "20240724_084505",
+        "20240724_211938",
     ],  # tau = 0.22
     [
-        "20240413_234517",
-        "20240413_221652",
-        "20240413_160117",
-        "20240708_032314",
+        "20240725_051720",
+        "",
+        "",
+        "20240724_120601",
+        "20240724_125506",
+        "20240724_203629",
     ],  # tau = 0.32
 ]
 save_paths_tau = [
     [
-        "20240412_215853",
-        "20240412_205938",
-        "20240413_060643",
-        "20240707_210742",
+        "20240724_190921",
+        "",
+        "",
+        "20240724_030806",
+        "20240724_023958",
+        "20240724_145803",
     ],  # beta = 1.25
     [
-        "20240412_204821",
-        "20240412_220340",
-        "20240413_063728",
-        "20240707_210827",
+        "20240724_182351",
+        "",
+        "",
+        "20240724_063151",
+        "20240724_062848",
+        "20240724_183920",
     ],  # beta = 2.5
     [
-        "20240412_223504",
-        "20240412_213500",
-        "20240413_061426",
-        "20240707_232011",
+        "20240724_181907",
+        "",
+        "",
+        "20240724_033734",
+        "20240724_031217",
+        "20240724_154259",
     ],  # beta = 3.75
     [
-        "20240412_221810",
-        "20240412_224127",
-        "20240413_064000",
-        "20240707_215025",
+        "20240724_180653",
+        "",
+        "",
+        "20240724_074711",
+        "20240724_071006",
+        "20240724_202729",
     ],  # beta = 4.5
 ]
 save_paths_beta = [
@@ -117,24 +135,24 @@ legend_str_lambda = [
 legend_str_lambda = [legend_str_lambda[idx] for idx in which_idx]
 [legend_str.append(legend_str_lambda[idx]) for idx in order_idx]
 
-
+# colors
 true_color = cmap(0)
 true_lw = 5.0
 true_ls = "-"
-pred_colors = [cmap(4), cmap(1), cmap(2), cmap(5)]
-pred_lws = [2.5, 2.5, 2.5, 2.5]
-pred_lss = ["-", "--", "-.", ":"]
+pred_colors = [cmap(4), cmap(1), cmap(2)]
+pred_lws = [2.5, 2.5, 2.5]
+pred_lss = ["-", "--", "-."]
 
 true_marker = "none"
-pred_markers = ["none", "none", "none", "none"]
+pred_markers = ["none", "none", "none"]
 true_ms = 6
-pred_mss = [8, 8, 8, 8]
+pred_mss = [8, 8, 8]
 
 titles = ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)"]
 
-fig = plt.figure(figsize=(15, 6), constrained_layout=True)
+fig = plt.figure(figsize=(15, 3), constrained_layout=True)
 
-for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
+for k, plot_name in enumerate(["varying_beta"]):
     if plot_name == "varying_beta":
         save_paths = save_paths_beta
         # param_list = eParam
@@ -147,7 +165,7 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
         not_vary_param = "beta"
     for j, save_path in enumerate(save_paths):
         i = eParam[vary_param]
-        ax = plt.subplot(2, len(save_paths), j + 1 + len(save_paths) * k)
+        ax = plt.subplot(1, len(save_paths), j + 1 + len(save_paths) * k)
         ax.set_title(titles[j + len(save_paths) * k], loc="left")
 
         dJdp_mean = [None] * len(model_paths)
@@ -210,7 +228,7 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
             if plot_name == "varying_beta":
                 ax.xaxis.set_major_locator(MultipleLocator(1))
             elif plot_name == "varying_tau":
-                ax.xaxis.set_major_locator(MultipleLocator(0.05))
+                ax.xaxis.set_major_locator(MultipleLocator(0.1))
             ax.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax.grid(visible=True)
             min_ylim = np.min(dJdp_true)
@@ -218,10 +236,16 @@ for k, plot_name in enumerate(["varying_beta", "varying_tau"]):
             range_ylim = max_ylim - min_ylim
             ax.set_ylim([min_ylim - 0.15 * range_ylim, max_ylim + 0.15 * range_ylim])
 
+legend = plt.figlegend(
+    legend_str, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.2)
+)
+handles = legend.get_lines()
+handles = [handles[idx] for idx in [0, 1, 3, 2]]
+labels = [legend_str[idx] for idx in [0, 1, 3, 2]]
+# reorder legend
 plt.figlegend(
-    legend_str, loc="upper center", ncols=len(legend_str), bbox_to_anchor=(0.5, 1.1)
+    handles, labels, loc="upper right", ncols=len(legend_str), bbox_to_anchor=(1.0, 1.2)
 )
 if save_fig:
-    fig.savefig(f"paper/graphics/figure_{fig_name}.png", bbox_inches="tight", dpi=300)
     fig.savefig(f"paper/graphics/figure_{fig_name}.pdf", bbox_inches="tight")
 plt.show()

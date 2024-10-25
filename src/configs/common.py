@@ -77,12 +77,6 @@ def get_config():
     config.val.hyperparameters.input_scaling.max = 10.0
     config.val.hyperparameters.input_scaling.scale = "log10"
 
-    # U_F_SCALING
-    # config.val.hyperparameters.u_f_scaling = ml_collections.ConfigDict()
-    # config.val.hyperparameters.u_f_scaling.min = 0.5
-    # config.val.hyperparameters.u_f_scaling.max = 2.5
-    # config.val.hyperparameters.u_f_scaling.scale = "uniform"
-
     # LEAK FACTOR
     config.val.hyperparameters.leak_factor = ml_collections.ConfigDict()
     config.val.hyperparameters.leak_factor.min = 0.01
