@@ -15,5 +15,5 @@ In this repository, we consider two nonlinear systems that are of interest to fl
 
 The tutorials show step by step data generation, training, validation and sensitivity calculations. Individual scripts in src folder can be run for training and validation by modifying the provided config files, these scripts save the results, which can later be imported for further calculations. 
 
-
+We would like to thank Alberto Racca for the initial set-up of the [ESN code](https://github.com/alberacca/Echo-State-Networks).
  
