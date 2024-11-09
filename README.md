@@ -1,6 +1,6 @@
 # Adjoint-ESN: Data-driven inference of adjoint sensitivities of nonlinear flows
 
- Repository for [<em>Data-driven computation of adjoint sensitivities without adjoint solvers: An application to thermoacoustics</em>, Phys. Rev. Fluids 9, 103902, D.E. Ozan and L. Magri (2024)](https://arxiv.org/abs/2404.11738) and [<em>Adjoint Sensitivities of Chaotic Flows without Adjoint Solvers: A Data-Driven Approach</em>, Proceedings of International Conference on Computational Science, D.E. Ozan and L. Magri (2024).](https://arxiv.org/abs/2404.12315). 
+ Repository for [<em>Data-driven computation of adjoint sensitivities without adjoint solvers: An application to thermoacoustics</em>, Phys. Rev. Fluids 9, 103902, D.E. Ozan and L. Magri (2024)](https://arxiv.org/abs/2404.11738) and [<em>Adjoint Sensitivities of Chaotic Flows without Adjoint Solvers: A Data-Driven Approach</em>, Lecture Notes in Computer Science, D.E. Ozan and L. Magri (2024).](https://arxiv.org/abs/2404.12315)
  
  Adjoint methods offer a computationally cheap and accurate way to calculate the sensitivity of a quantity of interest with respect to the system parameters. 
  However, the accuracy of the adjoint relies on the physical model of the underlying system, which can be high-dimensional and highly nonlinear.  We propose a computational strategy to infer the adjoint 
